@@ -1,0 +1,152 @@
+# Native Chess Transformer - Unified Configuration v2
+# This file is the single source of truth for the entire project.
+# It reflects the active ~64M parameter CNN+Transformer architecture.
+
+# ==============================================================================
+# 1. CORE MODEL ARCHITECTURE
+# ==============================================================================
+model:
+  # The active model is a hybrid CNN+Transformer architecture.
+  type: "ChessTransformer"
+
+  # Parameters for the ChessTransformer model.
+  # These values define the ~64M parameter architecture.
+  chess_transformer:
+    input_channels: 12
+    cnn_channels: 256
+    cnn_blocks: 12
+    transformer_layers: 8
+    attention_heads: 8
+
+# ==============================================================================
+# 2. TRAINING & SELF-PLAY CONFIGURATION
+# ==============================================================================
+training:
+  # --- AlphaZero Training Loop ---
+  # This section governs the new dynamic_self_play.py script.
+  alpha_zero:
+    iterations: 1000
+    games_per_iteration: 50
+    epochs_per_iteration: 2
+    batch_size: 128
+    
+    # Replay Buffer
+    replay_buffer_size: 500000
+    min_replay_buffer_size: 10000
+
+    # Evaluation & Opponent Update
+    evaluation_interval: 3      # Evaluate every 3 iterations
+    evaluation_games: 20
+    opponent_update_threshold: 0.4 # Lower threshold for early iterations
+
+    # Learning Rate
+    learning_rate: 0.0001
+    min_learning_rate: 0.00001
+    lr_decay_steps: 500
+
+    # Temperature for exploration in self-play
+    temperature:
+      initial: 1.0
+      final: 0.1
+      decay_after_games: 1000
+
+  # --- Checkpoint Management ---
+  checkpoints:
+    dir: "models/alpha_zero_checkpoints"
+    save_interval: 2 # Save every 2 iterations
+    latest_player_model: "latest_player.pt"
+    best_opponent_model: "best_opponent.pt"
+    initial_opponent_model: "" # Path to a specific opponent model to start with, otherwise uses latest player
+
+  # --- MCTS (Monte Carlo Tree Search) ---
+  mcts:
+    simulations: 100
+    c_puct: 1.5
+    dirichlet_alpha: 0.5
+    dirichlet_epsilon: 0.25
+
+  # --- Optimizer ---
+  optimizer:
+    type: "AdamW"
+    weight_decay: 0.0001
+    betas: [0.9, 0.999] # Standard Adam betas
+    eps: 1.0e-8
+
+  scheduler:
+    type: "CosineAnnealingWarmRestarts"
+    T_0: 10
+    T_mult: 2
+
+  # --- General Training Parameters ---
+  gradient_clip: 1.0
+  use_amp: true # Automatic Mixed Precision
+
+# ==============================================================================
+# 3. EVALUATION CONFIGURATION
+# ==============================================================================
+evaluation:
+  # Default model to evaluate if not specified via command line.
+  default_model_to_evaluate: "models/alpha_zero_checkpoints/latest_player.pt"
+
+  # --- Stockfish Engine Benchmark ---
+  stockfish:
+    # Path to the Stockfish executable.
+    # On macOS/Linux with `brew install stockfish` or `apt install stockfish`,
+    # the path might be automatically found. On Windows, provide the full path.
+    path: "stockfish"
+
+    # Default search depth for evaluation games. This should be high for a strong benchmark.
+    default_depth: 15
+
+  # --- LCZero Engine Benchmark ---
+  lc0:
+    # Path to the lc0 executable
+    path: "lc0"
+    default_nodes: 80000
+
+# ==============================================================================
+# 4. WEB GUI & SERVER CONFIGURATION
+# ==============================================================================
+web_gui:
+  # The model used by the web server. Can be a path to a specific model
+  # or 'default' to use the one from the evaluation section.
+  model_path: "default"
+
+  # --- API Defaults ---
+  # These can be overridden by API calls.
+  api_defaults:
+    stockfish_depth: 10
+    stockfish_time_limit: 1.0
+    lc0_nodes: 24000
+    lc0_time_limit: 3.0
+    ai_model_depth: 5 # A proxy for simulation count for the AI model
+
+  # --- Server Logging ---
+  # Quiets the default werkzeug logger for successful GET/POST requests.
+  quiet_logging: true
+
+# ==============================================================================
+# 5. SYSTEM & ENVIRONMENT
+# ==============================================================================
+system:
+  # Hardware acceleration: "cuda", "mps", or "cpu"
+  device: "auto" # 'auto' will detect available hardware
+  compile_model: false # Disable torch.compile
+  self_play_workers: 5 # Number of parallel processes for self-play
+  evaluation_workers: 5 # Number of parallel processes for evaluation
+
+  # Data loading
+  num_workers: 5
+  pin_memory: true
+
+# ==============================================================================
+# 6. LOGGING
+# ==============================================================================
+logging:
+  # Master directory for all log files.
+  log_dir: "logs"
+
+  # WandB (Weights & Biases) integration
+  use_wandb: false
+  wandb_project: "NativeChessTransformer"
+  wandb_entity: null 

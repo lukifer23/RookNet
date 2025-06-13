@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess AI - Neural Network vs Human</title>
+    
+    <!-- Chess.js and Chessboard.js (Local) with cache busting -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='lib/chessboard-1.0.0.min.css') }}?v={{ range(1000, 9999) | random }}">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='lib/chess.min.js') }}?v={{ range(1000, 9999) | random }}"></script>
+    <script src="{{ url_for('static', filename='lib/chessboard-1.0.0.min.js') }}?v={{ range(1000, 9999) | random }}"></script>
+    
+    <!-- Bootstrap for styling -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --warning-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            --glass-bg: rgba(255, 255, 255, 0.15);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --text-primary: #2c3e50;
+            --text-secondary: #7f8c8d;
+            --shadow-light: 0 4px 16px rgba(31, 38, 135, 0.25);
+            --shadow-strong: 0 8px 25px rgba(31, 38, 135, 0.35);
+            --border-radius: 16px;
+            --transition: all 0.2s cubic-bezier(0.23, 1, 0.320, 1);
+        }
+
+        * {
+            transition: var(--transition);
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            padding: 10px;
+            margin: 0;
+            overflow-x: hidden;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .chess-container {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-strong);
+            padding: 20px;
+            margin: 10px auto;
+            max-width: 1200px;
+            animation: slideInUp 0.6s ease-out;
+        }
+
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Compact Grid Layout */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr 300px;
+            gap: 15px;
+            align-items: start;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+        }
+
+        /* Chess Board Styling */
+        .board-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            perspective: 1000px;
+            min-height: 500px;
+            align-items: center;
+            gap: 15px;
+        }
+
+        /* Player Indicators */
+        .player-indicator {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 10px 20px;
+            box-shadow: var(--shadow-light);
+            transition: var(--transition);
+            min-width: 200px;
+            text-align: center;
+        }
+
+        .player-indicator:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-strong);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .player-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .player-color {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .black-player .player-color {
+            color: #2c3e50;
+            text-shadow: 0 0 10px rgba(44, 62, 80, 0.8);
+        }
+
+        .white-player .player-color {
+            color: #ecf0f1;
+            text-shadow: 0 0 10px rgba(236, 240, 241, 0.8);
+        }
+
+        .player-name {
+            flex: 1;
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .player-strength {
+            color: var(--text-secondary);
+            font-size: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        /* Engine-specific styling */
+        .engine-neural .player-name {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .engine-stockfish .player-name {
+            color: #3498db;
+            font-weight: bold;
+        }
+
+        .engine-leela .player-name {
+            color: #9b59b6;
+            font-weight: bold;
+        }
+
+        .engine-human .player-name {
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        #chess-board {
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 
+                0 15px 40px rgba(0, 0, 0, 0.3),
+                0 0 0 6px rgba(255, 255, 255, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            transform: rotateX(1deg) rotateY(-1deg);
+            transition: var(--transition);
+            width: 500px !important;
+            height: 500px !important;
+            position: relative;
+        }
+
+        #chess-board:hover {
+            transform: rotateX(0deg) rotateY(0deg) scale(1.01);
+            box-shadow: 
+                0 20px 50px rgba(0, 0, 0, 0.4),
+                0 0 0 8px rgba(255, 255, 255, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        }
+
+        /* Chess Piece Enhancement */
+        .piece-417db {
+            transition: all 0.15s ease !important;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+
+        .piece-417db:hover {
+            transform: scale(1.05) !important;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+            z-index: 1000 !important;
+        }
+
+        /* Square Enhancement */
+        .square-55d63 {
+            transition: all 0.15s ease !important;
+        }
+
+        /* Frosted-glass board squares */
+        .white-1e1d7 {
+            background: rgba(255, 255, 255, 0.65) !important; /* light frosted white */
+            backdrop-filter: blur(4px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.4) !important;
+        }
+
+        .black-3c85d {
+            background: rgba(0, 0, 0, 0.45) !important;    /* darker frosted gray */
+            backdrop-filter: blur(4px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        }
+
+        .square-55d63.highlight-white {
+            background-color: rgba(255, 255, 0, 0.4) !important;
+            box-shadow: inset 0 0 20px rgba(255, 255, 0, 0.6) !important;
+        }
+
+        .square-55d63.highlight-black {
+            background-color: rgba(255, 255, 0, 0.4) !important;
+            box-shadow: inset 0 0 20px rgba(255, 255, 0, 0.6) !important;
+        }
+
+        /* Click-based selection styles */
+        .square-55d63.selected-square {
+            background-color: rgba(0, 255, 0, 0.5) !important;
+            box-shadow: inset 0 0 25px rgba(0, 255, 0, 0.8) !important;
+            border: 2px solid #00ff00 !important;
+        }
+
+        .square-55d63.possible-move {
+            background-color: rgba(0, 150, 255, 0.3) !important;
+            box-shadow: inset 0 0 15px rgba(0, 150, 255, 0.5) !important;
+            cursor: pointer !important;
+        }
+
+        .square-55d63.possible-move:hover {
+            background-color: rgba(0, 150, 255, 0.5) !important;
+            box-shadow: inset 0 0 20px rgba(0, 150, 255, 0.7) !important;
+        }
+
+        /* Enhanced square clickability */
+        .square-55d63 {
+            cursor: pointer !important;
+            transition: all 0.15s ease !important;
+        }
+
+        .square-55d63:hover {
+            background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        /* Compact Glass Panels */
+        .controls-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--border-radius);
+            padding: 18px;
+            box-shadow: var(--shadow-light);
+            transition: var(--transition);
+        }
+
+        .controls-panel:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-strong);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .controls-panel h5 {
+            color: var(--text-primary);
+            font-weight: 600;
+            margin-bottom: 15px;
+            font-size: 1rem;
+            letter-spacing: 0.3px;
+        }
+
+        /* Compact Evaluation Panel */
+        .evaluation-panel {
+            background: var(--success-gradient);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            color: white;
+            text-align: center;
+            box-shadow: var(--shadow-strong);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .evaluation-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(255,255,255,0.1) 100%);
+            transform: translateX(-100%);
+            animation: shine 3s infinite;
+        }
+
+        @keyframes shine {
+            0% { transform: translateX(-100%); }
+            50% { transform: translateX(100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        /* Compact Form Elements */
+        .form-control {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: var(--transition);
+            backdrop-filter: blur(10px);
+            margin-bottom: 10px;
+        }
+
+        .form-control:focus {
+            background: rgba(255, 255, 255, 0.95);
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+            transform: scale(1.01);
+        }
+
+        /* Optimized Button Styling */
+        .btn {
+            border: none;
+            border-radius: 10px;
+            padding: 10px 20px;
+            font-weight: 600;
+            font-size: 13px;
+            letter-spacing: 0.3px;
+            position: relative;
+            overflow: hidden;
+            transition: var(--transition);
+            margin: 2px;
+        }
+
+        .btn:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover:before {
+            left: 100%;
+        }
+
+        .btn-success {
+            background: var(--warning-gradient);
+            color: white;
+            box-shadow: 0 4px 15px rgba(67, 233, 123, 0.3);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(67, 233, 123, 0.4);
+        }
+
+        .btn-primary {
+            background: var(--primary-gradient);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-info {
+            background: var(--success-gradient);
+            color: white;
+            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+        }
+
+        .btn-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.4);
+        }
+
+        /* Status Indicators */
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-size: 13px;
+            font-weight: 600;
+            margin: 5px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .status-online {
+            background: rgba(46, 204, 113, 0.2);
+            color: #27ae60;
+            animation: pulse 2s infinite;
+        }
+
+        .status-offline {
+            background: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+        }
+
+        .status-thinking {
+            background: rgba(241, 196, 15, 0.2);
+            color: #f39c12;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        /* Header Styling */
+        .header-section {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .header-section h1 {
+            color: var(--text-primary);
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header-section p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            margin: 0;
+        }
+
+        /* Loading Optimizations */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+
+        .loading-content {
+            text-align: center;
+            color: white;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            .chess-container {
+                padding: 15px;
+                margin: 5px;
+            }
+            
+            .main-grid {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            
+            #chess-board {
+                transform: none;
+            }
+            
+            .controls-panel {
+                padding: 15px;
+            }
+        }
+
+        /* Theme overrides */
+        #chess-board.theme-glass .white-1e1d7 {
+            background: rgba(255, 255, 255, 0.65) !important;
+            backdrop-filter: blur(4px) !important;
+            border: 1px solid rgba(255,255,255,0.4) !important;
+        }
+        #chess-board.theme-glass .black-3c85d {
+            background: rgba(0,0,0,0.45) !important;
+            backdrop-filter: blur(4px) !important;
+            border: 1px solid rgba(255,255,255,0.2) !important;
+        }
+
+        #chess-board.theme-metal .white-1e1d7 {
+            background: radial-gradient(circle at 30% 30%, #fafafa 0%, #d6d6d6 70%) !important;
+            border: 1px solid #bcbcbc !important;
+        }
+        #chess-board.theme-metal .black-3c85d {
+            background: radial-gradient(circle at 30% 30%, #8f8f8f 0%, #5e5e5e 70%) !important;
+            border: 1px solid #4a4a4a !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h3>Loading Chess AI...</h3>
+            <p id="loading-text">Initializing engines...</p>
+        </div>
+    </div>
+
+    <div class="chess-container">
+        <!-- Notification Area -->
+        <div id="notification-area" style="position: fixed; top: 10px; right: 10px; z-index: 1050; width: 320px;"></div>
+
+        <!-- Header -->
+        <div class="header-section">
+            <h1><i class="fas fa-chess"></i> Chess AI Interface</h1>
+            <p>Neural Network powered chess with real-time analysis</p>
+        </div>
+
+        <!-- Status Panel -->
+        <div class="controls-panel">
+            <h5><i class="fas fa-info-circle"></i> System Status</h5>
+            <div id="status-container">
+                <div class="status-indicator status-offline">
+                    <i class="fas fa-brain"></i> Neural Network: Loading...
+                </div>
+                <div class="status-indicator status-offline">
+                    <i class="fas fa-chess-rook"></i> Stockfish: Loading...
+                </div>
+                <div class="status-indicator status-offline">
+                    <i class="fas fa-microchip"></i> <span id="device-info">CPU</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Game Grid -->
+        <div class="main-grid">
+            <!-- Left Controls -->
+            <div class="controls-panel">
+                <h5><i class="fas fa-gamepad"></i> Game Mode</h5>
+                
+                <div class="control-group">
+                    <label for="play-mode" class="form-label"><i class="fas fa-gamepad"></i> Play Mode:</label>
+                    <select id="play-mode" class="form-select styled-select">
+                        <option value="human-vs-neural" selected>Human (White) vs Neural Net</option>
+                        <option value="neural-vs-human">Neural Net (White) vs Human</option>
+                        <option value="human-vs-stockfish">Human vs Stockfish</option>
+                        <option value="stockfish-vs-human">Stockfish vs Human</option>
+                        <option value="neural-vs-stockfish" class="highlight">Neural Net vs Stockfish (Auto)</option>
+                        <option value="stockfish-vs-neural" class="highlight">Stockfish vs Neural Net (Auto)</option>
+                        <option value="stockfish-vs-stockfish" class="highlight">Stockfish vs Stockfish (Auto)</option>
+                        <option value="neural-vs-neural" class="highlight">Neural Net vs Neural Net (Auto)</option>
+                        <option value="human-vs-leela" disabled>Human vs LeelaZero (Coming Soon)</option>
+                        <option value="leela-vs-stockfish" class="highlight" disabled>LeelaZero vs Stockfish (Auto)</option>
+                    </select>
+                </div>
+                
+                <div id="white-strength-control" class="control-group">
+                    <label for="white-engine-strength" class="form-label"><i class="fas fa-chess-king"></i> White Engine Strength:</label>
+                    <select id="white-engine-strength" class="form-select styled-select">
+                        <option value="very_easy">Very Easy (Depth 1, 0.1s)</option>
+                        <option value="easy">Easy (Depth 3, 0.3s)</option>
+                        <option value="medium" selected>Medium (Depth 5, 1s)</option>
+                        <option value="hard">Hard (Depth 10, 3s)</option>
+                        <option value="expert">Expert (Depth 16, 8s)</option>
+                        <option value="master">Master (Depth 20, 15s)</option>
+                    </select>
+                </div>
+                
+                <div id="black-strength-control" class="control-group">
+                    <label class="form-label" for="black-engine-strength">♚ Black Engine Strength:</label>
+                    <select class="form-select" id="black-engine-strength">
+                        <option value="easy">Easy (Depth 3, 0.3s)</option>
+                        <option value="medium" selected>Medium (Depth 5, 1s)</option>
+                        <option value="hard">Hard (Depth 8, 3s)</option>
+                        <option value="expert">Expert (Depth 12, 8s)</option>
+                    </select>
+                </div>
+                
+                <div class="d-grid gap-2 mt-3">
+                    <button id="new-game-btn" class="btn btn-success btn-lg"><i class="fas fa-play"></i> New Game</button>
+                    <button id="auto-play-btn" class="btn btn-warning btn-lg"><i class="fas fa-robot"></i> Start Auto-Play</button>
+                    <button id="make-engine-move-btn" class="btn btn-primary" style="display: none;"><i class="fas fa-cogs"></i> Make Engine Move</button>
+                    <hr>
+                    <button id="takeback-btn" class="btn btn-secondary"><i class="fas fa-undo"></i> Takeback</button>
+                    <button id="resign-btn" class="btn btn-danger"><i class="fas fa-flag"></i> Resign</button>
+                    <button id="draw-btn" class="btn btn-info"><i class="fas fa-handshake"></i> Offer Draw</button>
+                </div>
+            </div>
+
+            <!-- Chess Board -->
+            <div class="board-container">
+                <!-- Black Player Indicator (top) -->
+                <div id="black-player-indicator" class="player-indicator black-player">
+                    <div class="player-info">
+                        <span class="player-color">●</span>
+                        <span class="player-name">Neural Network</span>
+                        <span class="player-strength" id="black-strength-display">Depth 5</span>
+                    </div>
+                </div>
+                
+                <div id="chess-board"></div>
+                
+                <!-- White Player Indicator (bottom) -->
+                <div id="white-player-indicator" class="player-indicator white-player">
+                    <div class="player-info">
+                        <span class="player-color">○</span>
+                        <span class="player-name">Stockfish</span>
+                        <span class="player-strength" id="white-strength-display">Depth 5</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Analysis -->
+            <div class="evaluation-panel">
+                <h5><i class="fas fa-chart-line"></i> Position Analysis</h5>
+                
+                <div class="evaluation-bar-container" style="margin: 15px 0;">
+                    <div class="evaluation-labels" style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 12px;">
+                        <span>Black</span>
+                        <span>Equal</span>
+                        <span>White</span>
+                    </div>
+                    <div id="evaluation-bar" style="height: 20px; background: linear-gradient(to right, #2d3436 0%, #636e72 50%, #ddd 50%, #b2bec3 100%); border-radius: 10px; overflow: hidden; position: relative;">
+                        <div id="evaluation-fill" style="height: 100%; background: linear-gradient(45deg, #fd79a8, #e84393); transition: width 0.5s ease; width: 50%; border-radius: 10px;"></div>
+                    </div>
+                </div>
+                
+                <div class="evaluation-details" style="margin-top: 20px;">
+                    <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 13px;">
+                        <strong id="white-eval-label">White Engine:</strong>
+                        <span><span id="white-eval">0</span></span>
+                    </div>
+                    
+                    <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 13px;">
+                        <strong id="black-eval-label">Black Engine:</strong>
+                        <span><span id="black-eval">0</span></span>
+                    </div>
+                    
+                    <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 13px;">
+                        <strong>Material:</strong>
+                        <span id="material-balance">♔39 ♚39</span>
+                    </div>
+                    
+                    <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 13px;">
+                        <strong>Captures:</strong>
+                        <span id="captures-count">0</span>
+                    </div>
+                    
+                    <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 13px;">
+                        <strong>Last Move:</strong>
+                        <span id="last-move">None</span>
+                    </div>
+                    
+                    <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 13px;">
+                        <strong>Legal Moves:</strong>
+                        <span id="legal-moves-count">20</span>
+                    </div>
+                    
+                    <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 13px;">
+                        <strong>Total Moves:</strong>
+                        <span id="total-moves">0</span>
+                    </div>
+                    
+                    <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 13px;">
+                        <strong>Game Time:</strong>
+                        <span id="game-time">0:00</span>
+                    </div>
+                    
+                    <!-- Game Result Row (shown after game ends) -->
+                    <div id="game-result-row" class="eval-row" style="display: none; justify-content: space-between; margin: 8px 0; font-size: 13px;">
+                        <strong>Game Result:</strong>
+                        <span id="game-result-value">-</span>
+                    </div>
+                    
+                    <!-- ELO Rating Estimation (shown after game ends) -->
+                    <div id="elo-estimation" style="display: none; margin-top: 20px; padding: 15px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.2);">
+                        <h6 style="margin-bottom: 15px; color: #f1c40f;"><i class="fas fa-trophy"></i> Game Performance</h6>
+                        
+                        <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 13px;">
+                            <strong>White ELO:</strong>
+                            <span id="white-elo-estimate">~1500</span>
+                        </div>
+                        
+                        <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 13px;">
+                            <strong>Black ELO:</strong>
+                            <span id="black-elo-estimate">~1500</span>
+                        </div>
+                        
+                        <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 12px; color: rgba(255, 255, 255, 0.7);">
+                            <span>Accuracy:</span>
+                            <span><span id="white-accuracy">85%</span> | <span id="black-accuracy">82%</span></span>
+                        </div>
+                        
+                        <div class="eval-row" style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 12px; color: rgba(255, 255, 255, 0.7);">
+                            <span>Avg Move Time:</span>
+                            <span><span id="avg-move-time">2.1s</span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom JavaScript with cache busting -->
+    <script src="{{ url_for('static', filename='js/chess-interface.js') }}?v={{ range(1000, 9999) | random }}"></script>
+    
+    <script>
+        // Hide loading screen when everything is loaded
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                document.getElementById('loading-screen').classList.add('hidden');
+            }, 1000);
+        });
+        
+        // Update loading text
+        document.addEventListener('DOMContentLoaded', function() {
+            const loadingText = document.getElementById('loading-text');
+            const messages = [
+                'Initializing engines...',
+                'Loading neural network...',
+                'Starting Stockfish...',
+                'Preparing board...',
+                'Ready!'
+            ];
+            let i = 0;
+            const interval = setInterval(() => {
+                if (i < messages.length) {
+                    loadingText.textContent = messages[i];
+                    i++;
+                } else {
+                    clearInterval(interval);
+                }
+            }, 600);
+        });
+    </script>
+</body>
+</html> 

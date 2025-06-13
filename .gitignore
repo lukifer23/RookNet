@@ -1,0 +1,18 @@
+# Ignore data and logs
+data/
+logs/
+evaluation_results/
+
+# Ignore all models by default
+models/*
+
+# Allow only the two key checkpoints to be version-controlled (via Git LFS)
+!models/alpha_zero_checkpoints/latest_player.pt
+!models/alpha_zero_checkpoints/best_opponent.pt
+
+# Python/IDE stuff
+__pycache__/
+*.pyc
+chess_ai_env/
+*.egg-info/
+.DS_Store .git_backup_*

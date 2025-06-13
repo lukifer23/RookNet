@@ -1,0 +1,127 @@
+# Scaled Model Configuration for Enhanced Performance
+# 2x scaling from baseline - Phase 1 of scaling plan
+
+model:
+  type: "hybrid"  # CNN + basic transformer fusion
+  
+  # Scaled CNN Parameters (2x baseline)
+  input_channels: 12  # 6 piece types * 2 colors
+  hidden_channels: 128  # 2x increase from 64
+  num_blocks: 16  # 2x increase from 8
+  
+  # Transformer Parameters for hybrid model
+  transformer:
+    d_model: 1024  # 2x increase from 512
+    nhead: 16  # 2x increase from 8
+    num_layers: 12  # 2x increase from 6
+    dim_feedforward: 4096  # 2x increase from 2048
+    dropout: 0.1
+    
+  # Board Representation
+  board:
+    input_channels: 12
+    board_size: 8
+    embedding_dim: 128  # 2x increase from 64
+    
+  # Move Representation
+  moves:
+    vocab_size: 4096  # 64*64 possible moves
+    embedding_dim: 256  # 2x increase from 128
+
+# Enhanced Training Configuration
+training:
+  batch_size: 64  # 2x increase from 32
+  learning_rate: 1e-4
+  weight_decay: 1e-5
+  num_epochs: 10  # Start with 10 for baseline
+  warmup_steps: 2000  # 2x increase
+  gradient_accumulation: 2  # Enable gradient accumulation
+  
+  # Loss weights for multi-task learning
+  value_weight: 0.5
+  policy_weight: 0.5
+  
+  # Optimization
+  optimizer: "adamw"
+  scheduler: "cosine"
+  gradient_clip: 1.0
+  
+  # Mixed precision for faster training
+  use_amp: true
+  
+  # Advanced training techniques
+  label_smoothing: 0.1
+  dropout_rate: 0.1
+
+# Enhanced Data Configuration  
+data:
+  # Stockfish settings - multiple depths for diversity
+  stockfish:
+    depth: [8, 10, 12]  # Mix of depths for curriculum learning
+    time_limit: 0.5  # Faster moves for more data
+    threads: 4
+    
+  # Training data - scaled up significantly
+  num_games: 1000  # 20x increase from 50 for initial run
+  positions_per_game: 40  # More positions per game
+  min_game_length: 15  # Longer games for better data
+  
+  # Data processing
+  train_split: 0.8
+  val_split: 0.15
+  test_split: 0.05
+  
+  # Data augmentation
+  use_augmentation: true
+  flip_board: true
+  rotate_positions: false  # Keep false for chess
+
+# Hardware Configuration (optimized for M3 Pro)
+hardware:
+  device: "mps"  # Metal Performance Shaders
+  num_workers: 6  # Increased for faster data loading
+  pin_memory: true
+  persistent_workers: true
+  
+# Enhanced Logging Configuration
+logging:
+  log_dir: "logs/scaled_experiments"
+  save_dir: "models/scaled_checkpoints"
+  log_interval: 50  # More frequent logging
+  save_interval: 500
+  use_wandb: false
+  
+  # Metrics tracking
+  track_gradients: true
+  track_weights: true
+  save_best_only: false  # Save all checkpoints for analysis
+  
+# Evaluation Configuration
+evaluation:
+  # Engine testing against multiple depths
+  test_engines: ["stockfish_depth_5", "stockfish_depth_8", "stockfish_depth_10"]
+  test_positions: 500  # Comprehensive testing
+  time_per_move: 2.0  # More time for evaluation
+  
+  # Metrics
+  track_elo: true
+  track_tactics: true
+  track_speed: true
+  track_memory: true
+  
+  # Evaluation intervals
+  eval_interval: 2  # Evaluate every 2 epochs
+  
+# Advanced Features
+advanced:
+  # Curriculum learning
+  curriculum_learning: true
+  curriculum_stages: [5, 8, 10, 12]  # Stockfish depths
+  
+  # Regularization
+  weight_decay_schedule: true
+  dropout_schedule: true
+  
+  # Memory optimization
+  gradient_checkpointing: true
+  mixed_precision: true 
