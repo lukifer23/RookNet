@@ -14,7 +14,7 @@ model:
   chess_transformer:
     input_channels: 12
     cnn_channels: 256
-    cnn_blocks: 12
+    cnn_blocks: 20
     transformer_layers: 8
     attention_heads: 8
 
@@ -25,19 +25,19 @@ training:
   # --- AlphaZero Training Loop ---
   # This section governs the new dynamic_self_play.py script.
   alpha_zero:
-    iterations: 1000
-    games_per_iteration: 50
-    epochs_per_iteration: 2
-    batch_size: 128
+    iterations: 1  # quick smoke-run
+    games_per_iteration: 2
+    epochs_per_iteration: 1
+    batch_size: 32
     
     # Replay Buffer
-    replay_buffer_size: 500000
-    min_replay_buffer_size: 10000
+    replay_buffer_size: 1000
+    min_replay_buffer_size: 0
 
     # Evaluation & Opponent Update
-    evaluation_interval: 3      # Evaluate every 3 iterations
-    evaluation_games: 20
-    opponent_update_threshold: 0.4 # Lower threshold for early iterations
+    evaluation_interval: 0  # skip evaluation in smoke
+    evaluation_games: 0
+    opponent_update_threshold: 0.55 # Require a 55% win/draw rate to promote
 
     # Learning Rate
     learning_rate: 0.0001
@@ -50,6 +50,9 @@ training:
       final: 0.1
       decay_after_games: 1000
 
+    # Gradient clipping to stabilize training
+    gradient_clip: 1.0
+
   # --- Checkpoint Management ---
   checkpoints:
     dir: "models/alpha_zero_checkpoints"
@@ -60,10 +63,10 @@ training:
 
   # --- MCTS (Monte Carlo Tree Search) ---
   mcts:
-    simulations: 100
+    simulations: 20
     c_puct: 1.5
-    dirichlet_alpha: 0.5
-    dirichlet_epsilon: 0.25
+    dirichlet_alpha: 0.6
+    dirichlet_epsilon: 0.40
 
   # --- Optimizer ---
   optimizer:
@@ -82,7 +85,17 @@ training:
   use_amp: true # Automatic Mixed Precision
 
 # ==============================================================================
-# 3. EVALUATION CONFIGURATION
+# 3. DATA CONFIGURATION
+# ==============================================================================
+data:
+  # Directory to store self-play game data for the replay buffer.
+  replay_buffer_dir: "data/replay"
+  # WebDataset shard configuration
+  wds_shard_pattern: "shard-%06d.tar"
+  use_webdataset: false
+
+# ==============================================================================
+# 4. EVALUATION CONFIGURATION
 # ==============================================================================
 evaluation:
   # Default model to evaluate if not specified via command line.
@@ -105,7 +118,7 @@ evaluation:
     default_nodes: 80000
 
 # ==============================================================================
-# 4. WEB GUI & SERVER CONFIGURATION
+# 5. WEB GUI & SERVER CONFIGURATION
 # ==============================================================================
 web_gui:
   # The model used by the web server. Can be a path to a specific model
@@ -126,21 +139,23 @@ web_gui:
   quiet_logging: true
 
 # ==============================================================================
-# 5. SYSTEM & ENVIRONMENT
+# 6. SYSTEM & ENVIRONMENT
 # ==============================================================================
 system:
   # Hardware acceleration: "cuda", "mps", or "cpu"
-  device: "auto" # 'auto' will detect available hardware
-  compile_model: false # Disable torch.compile
-  self_play_workers: 5 # Number of parallel processes for self-play
-  evaluation_workers: 5 # Number of parallel processes for evaluation
+  device: "mps" # run trainer on GPU
+  compile_model: false
+  self_play_workers: 4
+  evaluation_workers: 2
+  dataloader_workers: 0  # torch DataLoader workers inside trainer
+  use_manager_queue: true
 
   # Data loading
-  num_workers: 5
+  num_workers: 4 # For the DataLoader
   pin_memory: true
 
 # ==============================================================================
-# 6. LOGGING
+# 7. LOGGING
 # ==============================================================================
 logging:
   # Master directory for all log files.

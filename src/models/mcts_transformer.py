@@ -18,8 +18,8 @@ from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 import threading
 
-from src.models.chess_transformer import ChessTransformer, create_chess_transformer
-from src.utils.chess_utils import board_to_tensor
+from models.chess_transformer import ChessTransformer, create_chess_transformer
+from utils.chess_utils import board_to_tensor
 
 @dataclass
 class MCTSConfig:

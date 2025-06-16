@@ -15,13 +15,12 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import math
 
-from src.models.chess_transformer import ChessTransformer
-from src.utils.chess_env import ChessEnvironment
-from src.search.mcts import MCTS
-from src.utils.config_loader import load_config
-from src.utils.move_encoder import get_policy_vector_size
-from stockfish import Stockfish
-from src.evaluation.stats import sprt_llr, sprt_decide
+from models.chess_transformer import ChessTransformer
+from utils.chess_env import ChessEnvironment
+from search.mcts import MCTS
+from utils.config_loader import load_config
+from utils.move_encoder import get_policy_vector_size
+from evaluation.stats import sprt_llr, sprt_decide
 
 # Load unified configuration
 CONFIG = load_config("configs/config.v2.yaml")
@@ -59,16 +58,21 @@ class ModelEvaluator:
             except Exception as e:
                 logger.error(f"Failed to load model from {path}: {e}")
                 
-        # Initialize Stockfish from config
+        # Initialize chess environment for engine management
+        self.env = ChessEnvironment(CONFIG)
+        self.stockfish_available = False
         try:
-            stockfish_path = eval_config['stockfish']['path']
-            self.stockfish = Stockfish(path=stockfish_path)
+            self.env.start_engine()
             self.stockfish_available = True
-            logger.info(f"Stockfish engine loaded from {stockfish_path}")
+            logger.info(f"Stockfish engine loaded via python-chess: {self.env.engine.id['name']}")
         except Exception as e:
-            logger.warning(f"Stockfish not available at path '{stockfish_path}': {e}")
-            self.stockfish_available = False
+            logger.warning(f"Could not start chess engine: {e}")
     
+    def __del__(self):
+        """Ensure engine is cleanly shut down."""
+        if self.stockfish_available:
+            self.env.stop_engine()
+
     def evaluate_vs_stockfish(self, 
                             model_name: str,
                             num_games: int = 10,
@@ -81,50 +85,43 @@ class ModelEvaluator:
             return {"error": "Stockfish not available"}
             
         model = self.models[model_name]
-        env = ChessEnvironment()
         mcts = MCTS(model, device=self.device)
         
         results = {"wins": 0, "losses": 0, "draws": 0, "games": []}
         
         for game_num in range(num_games):
-            logging.info(f"Game {game_num+1}/{num_games}")
+            logger.info(f"Starting Stockfish game {game_num+1}/{num_games} for model '{model_name}'")
             
-            env.reset()
+            self.env.board.reset()
             game_moves = []
             model_plays_white = game_num % 2 == 0
             
-            while not env.is_terminal():
-                if (env.board.turn == chess.WHITE) == model_plays_white:
+            while not self.env.board.is_game_over():
+                if (self.env.board.turn == chess.WHITE) == model_plays_white:
                     # Model's turn
                     start_time = time.time()
-                    move = mcts.search(env.board, mcts_sims)
+                    move = mcts.search(self.env.board, mcts_sims)
                     think_time = time.time() - start_time
                     
-                    if move is None:
-                        break  # No legal moves
+                    if move is None: break
                         
-                    env.make_move(move)
+                    self.env.board.push(move)
                     game_moves.append({"move": str(move), "player": "model", "time": think_time})
                     
                 else:
-                    # Stockfish's turn
-                    self.stockfish.set_fen_position(env.board.fen())
-                    self.stockfish.set_depth(stockfish_depth)
-                    
-                    move_str = self.stockfish.get_best_move_time(int(time_per_move * 1000))
-                    if move_str is None:
-                        break
+                    # Stockfish's turn using python-chess
+                    move, _ = self.env.get_engine_move(time_limit=time_per_move)
+                    if move is None: break
                         
-                    move = chess.Move.from_uci(move_str)
-                    env.make_move(move)
+                    self.env.board.push(move)
                     game_moves.append({"move": str(move), "player": "stockfish", "time": time_per_move})
             
             # Determine result
-            result = env.get_result()
-            if result == 0.5:  # Draw
+            result_str = self.env.board.result()
+            if result_str == "1/2-1/2":
                 results["draws"] += 1
                 outcome = "draw"
-            elif (result == 1.0 and model_plays_white) or (result == 0.0 and not model_plays_white):
+            elif (result_str == "1-0" and model_plays_white) or (result_str == "0-1" and not model_plays_white):
                 results["wins"] += 1
                 outcome = "win"
             else:
@@ -136,7 +133,7 @@ class ModelEvaluator:
                 "model_color": "white" if model_plays_white else "black",
                 "outcome": outcome,
                 "moves": game_moves,
-                "final_fen": env.board.fen()
+                "final_fen": self.env.board.fen()
             })
         
         # Calculate statistics
@@ -170,20 +167,21 @@ class ModelEvaluator:
         
         model1 = self.models[model1_name]
         model2 = self.models[model2_name]
-        env = ChessEnvironment()
+        # Use a local environment for model vs model games
+        env = ChessEnvironment(CONFIG)
         mcts1 = MCTS(model1, device=self.device)
         mcts2 = MCTS(model2, device=self.device)
         
         results = {f"{model1_name}_wins": 0, f"{model2_name}_wins": 0, "draws": 0, "games": []}
         
         for game_num in range(num_games):
-            logging.info(f"Game {game_num+1}/{num_games}: {model1_name} vs {model2_name}")
+            logger.info(f"Game {game_num+1}/{num_games}: {model1_name} vs {model2_name}")
             
-            env.reset()
+            env.board.reset()
             game_moves = []
             model1_plays_white = game_num % 2 == 0
             
-            while not env.is_terminal():
+            while not env.board.is_game_over():
                 if (env.board.turn == chess.WHITE) == model1_plays_white:
                     # Model 1's turn
                     move = mcts1.search(env.board, mcts_sims)
@@ -193,18 +191,17 @@ class ModelEvaluator:
                     move = mcts2.search(env.board, mcts_sims)
                     player = model2_name
                 
-                if move is None:
-                    break
+                if move is None: break
                     
-                env.make_move(move)
+                env.board.push(move)
                 game_moves.append({"move": str(move), "player": player})
             
             # Determine result
-            result = env.get_result()
-            if result == 0.5:  # Draw
+            result_str = env.board.result()
+            if result_str == "1/2-1/2":
                 results["draws"] += 1
                 outcome = "draw"
-            elif (result == 1.0 and model1_plays_white) or (result == 0.0 and not model1_plays_white):
+            elif (result_str == "1-0" and model1_plays_white) or (result_str == "0-1" and not model1_plays_white):
                 results[f"{model1_name}_wins"] += 1
                 outcome = f"{model1_name}_win"
             else:
@@ -252,83 +249,60 @@ class ModelEvaluator:
         return filepath
 
 def main():
-    parser = argparse.ArgumentParser(description="Comprehensive Chess Model Evaluation")
-    parser.add_argument("--models", nargs="+", help="Model checkpoint paths. Overrides config default.")
-    parser.add_argument("--vs-stockfish", action="store_true", help="Evaluate against Stockfish")
-    parser.add_argument("--vs-models", action="store_true", help="Evaluate models against each other")
-    parser.add_argument("--games", type=int, help="Number of games per evaluation. Overrides config.")
-    parser.add_argument("--stockfish-depth", type=int, help="Stockfish search depth. Overrides config.")
-    parser.add_argument("--mcts-sims", type=int, help="MCTS simulations per move. Overrides config.")
-    parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"], help="Device to use")
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    """Main entry point for evaluation."""
+    parser = argparse.ArgumentParser(description="Unified Model Evaluation System")
+    parser.add_argument("models", nargs='+', help="Paths to model checkpoint files (.pt).")
+    parser.add_argument("--mode", type=str, default="stockfish", choices=["stockfish", "model"],
+                        help="Evaluation mode: 'stockfish' or 'model' vs model.")
+    parser.add_argument("--games", type=int, default=10, help="Number of games to play.")
+    parser.add_argument("--stockfish_depth", type=int, default=5, help="Stockfish search depth.")
+    parser.add_argument("--mcts_sims", type=int, default=50, help="MCTS simulations per move.")
+    parser.add_argument("--time_limit", type=float, default=1.0, help="Time per move for Stockfish.")
+    parser.add_argument("--device", type=str, default="auto", help="Device to use (e.g., 'cuda', 'cpu').")
     
     args = parser.parse_args()
 
-    # Get configs
-    eval_config = CONFIG['evaluation']
-    mcts_config = CONFIG['training']['mcts']
-
-    # Determine parameters, preferring command line args over config file
-    model_paths = args.models or [eval_config['default_model_to_evaluate']]
-    num_games = args.games or eval_config.get('num_games', 10)
-    stockfish_depth = args.stockfish_depth or eval_config['stockfish']['default_depth']
-    mcts_sims = args.mcts_sims or mcts_config['simulations']
-
     # Setup logging
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-    
-    # Initialize evaluator
-    evaluator = ModelEvaluator(
-        model_paths=model_paths,
-        device=args.device
-    )
-    
-    if not evaluator.models:
-        logging.error("No models were loaded successfully. Aborting evaluation.")
-        return
+    log_file = Path(CONFIG['logging']['log_dir']) / 'evaluation.log'
+    log_file.parent.mkdir(exist_ok=True, parents=True)
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - %(levelname)s - %(message)s',
+                        handlers=[logging.StreamHandler(), logging.FileHandler(log_file)])
+    global logger
+    logger = logging.getLogger(__name__)
 
-    if args.vs_stockfish:
-        for model_path in model_paths:
-            model_name = Path(model_path).stem
-            if model_name not in evaluator.models:
-                continue
-            logging.info(f"Evaluating {model_name} vs Stockfish (Depth: {stockfish_depth})")
+    evaluator = ModelEvaluator(model_paths=args.models, device=args.device)
+
+    if args.mode == "stockfish":
+        if len(args.models) != 1:
+            logger.error("Stockfish evaluation requires exactly one model.")
+            return
+        
+        logger.info(f"Starting Stockfish evaluation for {args.models[0]}")
+        results = evaluator.evaluate_vs_stockfish(
+            model_name=Path(args.models[0]).stem,
+            num_games=args.games,
+            stockfish_depth=args.stockfish_depth,
+            mcts_sims=args.mcts_sims,
+            time_per_move=args.time_limit
+        )
+        evaluator.save_results(results, f"stockfish_eval_{Path(args.models[0]).stem}")
+
+    elif args.mode == "model":
+        if len(args.models) != 2:
+            logger.error("Model vs. model evaluation requires exactly two models.")
+            return
             
-            results = evaluator.evaluate_vs_stockfish(
-                model_name=model_name,
-                num_games=num_games,
-                stockfish_depth=stockfish_depth,
-                mcts_sims=mcts_sims
-            )
-            
-            evaluator.save_results(results, f"{model_name}_vs_stockfish")
-            
-            logging.info(f"Results: {results['wins']}W-{results['losses']}L-{results['draws']}D "
-                        f"(Win Rate: {results['win_rate']:.1%})")
-    
-    if args.vs_models and len(model_paths) >= 2:
-        # Evaluate all pairs of models
-        for i, model1_path in enumerate(model_paths):
-            for model2_path in model_paths[i+1:]:
-                model1_name = Path(model1_path).stem
-                model2_name = Path(model2_path).stem
-                
-                logging.info(f"Evaluating {model1_name} vs {model2_name}")
-                
-                results = evaluator.evaluate_model_vs_model(
-                    model1_name=model1_name,
-                    model2_name=model2_name,
-                    num_games=num_games,
-                    mcts_sims=mcts_sims
-                )
-                
-                evaluator.save_results(results, f"{model1_name}_vs_{model2_name}")
-                
-                logging.info(f"Results: {model1_name} {results[f'{model1_name}_wins']}W vs "
-                           f"{model2_name} {results[f'{model2_name}_wins']}W, {results['draws']}D")
+        logger.info(f"Starting model vs. model evaluation: {args.models[0]} vs {args.models[1]}")
+        results = evaluator.evaluate_model_vs_model(
+            model1_name=Path(args.models[0]).stem,
+            model2_name=Path(args.models[1]).stem,
+            num_games=args.games,
+            mcts_sims=args.mcts_sims
+        )
+        model1_stem = Path(args.models[0]).stem
+        model2_stem = Path(args.models[1]).stem
+        evaluator.save_results(results, f"model_eval_{model1_stem}_vs_{model2_stem}")
 
 if __name__ == "__main__":
     main() 

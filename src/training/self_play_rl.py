@@ -12,9 +12,8 @@ This is our breakthrough to beating Stockfish! Combining:
 Expected Result: Strategic depth that converts 22.9% accuracy into WINS!
 """
 
-import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+import sys  # sys kept, path hack removed
 
 import torch
 import torch.nn as nn
@@ -33,8 +32,8 @@ from pathlib import Path
 import math
 
 # Our existing modules
-from src.models.baseline import ChessCNN
-from src.utils.chess_env import ChessEnvironment
+from models.baseline import ChessCNN
+from utils.chess_env import ChessEnvironment
 
 @dataclass
 class MCTSNode:

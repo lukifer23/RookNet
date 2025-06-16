@@ -12,30 +12,31 @@ import numpy as np
 from typing import List, Tuple, Optional, Dict, Any
 import logging
 from pathlib import Path
+import torch
+from .config_loader import load_config
 
 logger = logging.getLogger(__name__)
 
 
 class ChessEnvironment:
     """
-    A comprehensive chess environment for neural network training and evaluation.
-    
-    Features:
-    - Board state representation (multiple formats)
-    - Move encoding/decoding
-    - Stockfish integration
-    - Game state management
+    Manages the chess board state and engine interaction.
     """
-    
-    def __init__(self, stockfish_path: Optional[str] = None):
+    def __init__(self, config=None):
+        """Lightweight wrapper around python-chess board/engine utilities.
+
+        The *config* argument is optional now that the project is an installable
+        package.  When omitted we lazily load the default `configs/config.v2.yaml`
+        to keep backwards compatibility.
         """
-        Initialize the chess environment.
-        
-        Args:
-            stockfish_path: Path to Stockfish engine binary
-        """
+        if config is None:
+            try:
+                config = load_config("configs/config.v2.yaml")
+            except Exception:
+                config = {}
+
+        self.config = config
         self.board = chess.Board()
-        self.stockfish_path = stockfish_path or self._find_stockfish()
         self.engine = None
         
         # Piece mappings for tensor representation
@@ -46,252 +47,103 @@ class ChessEnvironment:
         
         self.idx_to_piece = {v: k for k, v in self.piece_to_idx.items()}
         
-    def _find_stockfish(self) -> str:
-        """Try to find Stockfish installation automatically."""
-        possible_paths = [
-            "/opt/homebrew/bin/stockfish",  # Homebrew on M1/M2/M3 Macs
-            "/usr/local/bin/stockfish",     # Homebrew on Intel Macs
-            "/usr/bin/stockfish",           # System installation
-            "stockfish"                     # In PATH
-        ]
+    def start_engine(self):
+        """Initializes and starts the Stockfish engine."""
+        if self.engine:
+            self.stop_engine()
         
-        for path in possible_paths:
-            if Path(path).exists() or path == "stockfish":
-                return path
-                
-        raise FileNotFoundError("Stockfish not found. Please install with 'brew install stockfish'")
-    
-    def start_engine(self, **engine_options) -> None:
-        """Start the Stockfish engine with specified options."""
+        stockfish_path = self.config.get('evaluation', {}).get('stockfish', {}).get('path', 'stockfish')
         try:
-            self.engine = chess.engine.SimpleEngine.popen_uci(self.stockfish_path)
-            
-            # Configure engine options (avoid automatically managed options)
-            default_options = {
-                "Threads": 4,
-                "Hash": 128,  # MB
-            }
-            default_options.update(engine_options)
-            
-            # Only configure options that are available and not automatically managed
-            configurable_options = {}
-            for option, value in default_options.items():
-                if option in self.engine.options and not self.engine.options[option].is_managed():
-                    configurable_options[option] = value
-            
-            if configurable_options:
-                self.engine.configure(configurable_options)
-                    
-            logger.info(f"Stockfish engine started: {self.engine.id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to start engine: {e}")
-            raise
-    
-    def stop_engine(self) -> None:
-        """Stop the Stockfish engine."""
+            self.engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Stockfish engine not found at '{stockfish_path}'. Please install Stockfish or update the path in your config file.")
+
+    def stop_engine(self):
+        """Stops the chess engine."""
         if self.engine:
             self.engine.quit()
             self.engine = None
-    
-    def reset_board(self) -> None:
-        """Reset the chess board to starting position."""
-        self.board.reset()
-    
-    def board_to_tensor(self, board: Optional[chess.Board] = None) -> np.ndarray:
-        """
-        Convert chess board to tensor representation.
-        
-        Args:
-            board: Chess board to convert (uses self.board if None)
-            
-        Returns:
-            numpy array of shape (12, 8, 8) representing the board state
-            Channels 0-5: White pieces (Pawn, Rook, Knight, Bishop, Queen, King)
-            Channels 6-11: Black pieces (Pawn, Rook, Knight, Bishop, Queen, King)
-        """
-        if board is None:
-            board = self.board
-            
-        tensor = np.zeros((12, 8, 8), dtype=np.float32)
-        
-        for square in chess.SQUARES:
-            piece = board.piece_at(square)
-            if piece is not None:
-                # Get piece type and color
-                piece_idx = self.piece_to_idx[piece.piece_type]
-                color_offset = 0 if piece.color == chess.WHITE else 6
-                channel = piece_idx + color_offset
-                
-                # Convert square to row, col (chess uses different convention)
-                row = 7 - (square // 8)  # Flip row (chess uses rank 1-8)
-                col = square % 8
-                
-                tensor[channel, row, col] = 1.0
-        
-        return tensor
-    
-    def board_to_fen(self, board: Optional[chess.Board] = None) -> str:
-        """Get FEN representation of board."""
-        if board is None:
-            board = self.board
-        return board.fen()
-    
-    def move_to_uci(self, move: chess.Move) -> str:
-        """Convert move to UCI notation."""
-        return move.uci()
-    
-    def uci_to_move(self, uci: str) -> chess.Move:
-        """Convert UCI notation to move object."""
-        return chess.Move.from_uci(uci)
-    
-    def get_legal_moves(self, board: Optional[chess.Board] = None) -> List[chess.Move]:
-        """Get all legal moves for current position."""
-        if board is None:
-            board = self.board
-        return list(board.legal_moves)
-    
-    def move_to_indices(self, move: chess.Move) -> Tuple[int, int]:
-        """
-        Convert move to from/to square indices.
-        
-        Returns:
-            Tuple of (from_square, to_square) indices (0-63)
-        """
-        return move.from_square, move.to_square
-    
-    def indices_to_move(self, from_sq: int, to_sq: int, 
-                       promotion: Optional[int] = None) -> chess.Move:
-        """Convert square indices to move object."""
-        return chess.Move(from_sq, to_sq, promotion)
-    
-    def move_to_index(self, move: chess.Move) -> int:
-        """
-        Convert move to single index for neural network output.
-        Maps from_square (0-63) and to_square (0-63) to index (0-4095).
-        
-        Args:
-            move: Chess move to convert
-            
-        Returns:
-            Move index (0-4095)
-        """
-        return move.from_square * 64 + move.to_square
-    
-    def index_to_move(self, index: int) -> Tuple[int, int]:
-        """
-        Convert single index back to from/to squares.
-        
-        Args:
-            index: Move index (0-4095)
-            
-        Returns:
-            Tuple of (from_square, to_square)
-        """
-        from_square = index // 64
-        to_square = index % 64
-        return from_square, to_square
-    
-    def make_move(self, move: chess.Move, board: Optional[chess.Board] = None) -> bool:
-        """
-        Make a move on the board.
-        
-        Args:
-            move: Move to make
-            board: Board to move on (uses self.board if None)
-            
-        Returns:
-            True if move was legal and made, False otherwise
-        """
-        if board is None:
-            board = self.board
-            
-        if move in board.legal_moves:
-            board.push(move)
-            return True
-        return False
-    
-    def unmake_move(self, board: Optional[chess.Board] = None) -> Optional[chess.Move]:
-        """Unmake the last move."""
-        if board is None:
-            board = self.board
-            
-        if board.move_stack:
-            return board.pop()
-        return None
-    
-    def get_engine_move(self, time_limit: float = 1.0, 
-                       depth: Optional[int] = None) -> Tuple[Optional[chess.Move], Dict[str, Any]]:
-        """
-        Get best move from Stockfish engine.
-        
-        Args:
-            time_limit: Time limit in seconds
-            depth: Search depth (if None, uses time limit)
-            
-        Returns:
-            Tuple of (best_move, info_dict)
-        """
+
+    def get_engine_evaluation(self, time_limit=0.1):
+        """Gets the evaluation of the current position from the engine."""
         if not self.engine:
-            raise RuntimeError("Engine not started. Call start_engine() first.")
+            self.start_engine()
         
-        if depth:
-            result = self.engine.analyse(self.board, chess.engine.Limit(depth=depth))
-        else:
-            result = self.engine.analyse(self.board, chess.engine.Limit(time=time_limit))
-        
-        best_move = result.get("pv", [None])[0] if result.get("pv") else None
-        
-        return best_move, dict(result)
-    
-    def get_engine_evaluation(self, time_limit: float = 1.0) -> float:
-        """
-        Get position evaluation from Stockfish in centipawns.
-        
-        Returns:
-            Evaluation in centipawns (positive = White advantage)
-        """
+        info = self.engine.analyse(self.board, chess.engine.Limit(time=time_limit))
+        return info['score'].relative.score(mate_score=10000)
+
+    def get_engine_move(self, time_limit=1.0):
+        """Gets the best move from the engine."""
         if not self.engine:
-            raise RuntimeError("Engine not started. Call start_engine() first.")
-        
-        result = self.engine.analyse(self.board, chess.engine.Limit(time=time_limit))
-        
-        score = result.get("score")
-        if score:
-            white_score = score.white()
-            if white_score.is_mate():
-                # Convert mate scores to large centipawn values
-                mate_in = white_score.mate()
-                return 10000 * (1 if mate_in and mate_in > 0 else -1)
-            else:
-                # Return centipawn score from White's perspective
-                cp_score = white_score.score()
-                return cp_score if cp_score is not None else 0
-        
-        return 0
-    
-    def is_game_over(self, board: Optional[chess.Board] = None) -> bool:
-        """Check if game is over."""
-        if board is None:
-            board = self.board
-        return board.is_game_over()
-    
-    def get_game_result(self, board: Optional[chess.Board] = None) -> Optional[str]:
-        """Get game result (1-0, 0-1, 1/2-1/2, or None)."""
-        if board is None:
-            board = self.board
-        
-        if not board.is_game_over():
+            self.start_engine()
+            
+        result = self.engine.play(self.board, chess.engine.Limit(time=time_limit))
+        return result.move, None
+
+    def __del__(self):
+        self.stop_engine()
+
+    # ------------------------------------------------------------------
+    # Static / helper methods expected by training + MCTS pipelines
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def board_to_tensor(board: chess.Board):
+        """Convert *board* to a NumPy (12, 8, 8) float32 array.
+
+        Delegates to *board_utils.board_to_tensor* (which returns a Torch
+        tensor) and converts to NumPy to match the replay-buffer pipeline.
+        """
+        from utils.board_utils import board_to_tensor as _to_tensor
+
+        tensor = _to_tensor(board)  # torch.Tensor [12,8,8]
+        return tensor.numpy()
+
+    # ------------------------------------------------------------------
+    def select_move_with_temperature(self, board: chess.Board, policy: np.ndarray, temperature: float = 1.0):
+        """Sample a legal move from *policy* using Boltzmann/temperature.
+
+        Args
+        ----
+        board:       current python-chess *Board*.
+        policy:      1-D NumPy probability vector sized to *policy_head_output*.
+        temperature: >0 for stochastic; ==0 picks arg-max (greedy).
+        """
+        from utils.move_encoder import move_to_index, get_policy_vector_size
+
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
             return None
-            
-        result = board.result()
-        return result
-    
-    def clone_board(self, board: Optional[chess.Board] = None) -> chess.Board:
-        """Create a copy of the board."""
-        if board is None:
-            board = self.board
-        return board.copy()
+
+        if temperature <= 0:
+            # Greedy selection
+            best_move = max(legal_moves, key=lambda m: policy[move_to_index(m)])
+            return best_move
+
+        # Convert logits to probabilities with temperature scaling
+        probs = np.array([policy[move_to_index(m)] for m in legal_moves], dtype=np.float64)
+        if probs.sum() == 0:
+            # Fallback to uniform if NN gave zero to all legal moves
+            probs = np.ones(len(legal_moves), dtype=np.float64)
+
+        # Apply temperature: p_i ^ (1/temperature)
+        if temperature != 1.0:
+            probs = np.power(probs, 1.0 / temperature)
+        probs /= probs.sum()
+
+        move_idx = np.random.choice(len(legal_moves), p=probs)
+        return legal_moves[move_idx]
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def get_result(board: chess.Board) -> int:
+        """Return game result from White's perspective: 1, ‑1 or 0."""
+        outcome = board.result(claim_draw=True)
+        if outcome == "1-0":
+            return 1
+        if outcome == "0-1":
+            return -1
+        return 0
 
 
 # Example usage and testing

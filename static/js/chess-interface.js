@@ -164,6 +164,8 @@ async function makeEngineMove() {
             moveData = await getLeelaMove();
         } else if (engineForTurn === 'hopechess') {
             moveData = await apiCall('/api/move/hopechess', { method: 'POST', body: { fen: game.fen(), strength: (game.turn()==='w' ? $('#white-engine-strength').val() : $('#black-engine-strength').val()) } });
+        } else if (engineForTurn === 'llm') {
+            moveData = await apiCall('/api/move/llm', { method: 'POST', body: { fen: game.fen() }, timeout: 0 }); // no timeout
         } else {
             moveData = await getStockfishMove(game.turn());
         }
@@ -275,7 +277,8 @@ function processMove() {
 // --- API Communication ---
 async function apiCall(endpoint, options = {}) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+    const customTimeout = (options.timeout !== undefined) ? options.timeout : API_TIMEOUT_MS;
+    const timeoutId = customTimeout === 0 ? null : setTimeout(() => controller.abort(), customTimeout);
     
     try {
         const fetchOptions = { ...options, signal: controller.signal, headers: { 'Content-Type': 'application/json', ...options.headers } };
@@ -286,7 +289,7 @@ async function apiCall(endpoint, options = {}) {
         if (!response.ok) throw new Error(responseData.error || `HTTP ${response.status}`);
         return responseData;
     } catch (error) {
-        clearTimeout(timeoutId);
+        if (timeoutId) clearTimeout(timeoutId);
         if (error.name === 'AbortError') throw new Error('Request timeout');
         throw error;
     }
@@ -444,6 +447,11 @@ async function checkSystemStatus() {
         $('#play-mode option[value*="leela"]').prop('disabled', true); // Always disabled for now
         $('#play-mode option[value*="hopechess"]').prop('disabled', true); // HopeChess temporarily disabled
 
+        // LLM enabled only if backend has config
+        const llmCfg = await apiCall('/api/llm/config', {method:'GET'}).catch(()=>null);
+        const llmEnabled = llmCfg && llmCfg.has_key && llmCfg.model;
+        $('#play-mode option[value*="llm"]').prop('disabled', !llmEnabled);
+
         updatePlayerIndicators();
         console.log('✅ System status updated.');
         } catch (error) {
@@ -496,6 +504,8 @@ function getEngineDisplayName(engine) {
             return 'LeelaZero';
         case 'hopechess':
             return 'HopeChess';
+        case 'llm':
+            return 'Gemini LLM';
         case 'human':
             return 'Human Player';
         default:
@@ -559,4 +569,65 @@ function declareEngineErrorLoser(engineName) {
     $('#game-result-value').text(`${engineName} error – ${winner} wins.`);
     $('#game-result-row').show();
     $('#elo-estimation').hide();
-} 
+}
+
+// LLM settings save handler
+$(document).on('click', '#save-llm', async function() {
+    const key = $('#llm-api-key').val().trim();
+    const model = $('#llm-model').val();
+    if(!model){ showNotification('Please select a model before saving.','warning'); return; }
+    try {
+        await apiCall('/api/llm/config', {method:'POST', body:{api_key:key, model:model}, timeout:0});
+        showNotification('LLM configuration saved.', 'success');
+        $('#settingsModal').modal('hide');
+        await checkSystemStatus(); // refresh dropdown enablement
+    } catch(e) {
+        showNotification('Failed to save LLM config: '+e.message, 'danger');
+    }
+});
+
+// Pre-fill modal when opened (show existing config but don't fetch models automatically)
+$('#settingsModal').on('show.bs.modal', async function(){
+    $('#llm-model').prop('disabled', true).empty().append('<option selected disabled value="">Select a model…</option>');
+    $('#save-llm').prop('disabled', true);
+    try {
+        const cfg = await apiCall('/api/llm/config?include_key=1',{method:'GET', timeout:0});
+        if(cfg.api_key){
+            $('#llm-api-key').val(cfg.api_key);
+            // If a model already saved, fetch list automatically so user sees it
+            if(cfg.model){
+                await fetchAndPopulateModels(cfg.api_key, cfg.model.replace('models/',''));
+            }
+        }
+    } catch(e){ console.error(e); }
+});
+
+async function fetchAndPopulateModels(apiKey, preselect=null){
+    try{
+        // Temporarily disable button during fetch
+        $('#llm-fetch-models').prop('disabled', true).text('Fetching…');
+
+        // Persist key (without model) so backend can use it for /api/llm/models
+        await apiCall('/api/llm/config', {method:'POST', body:{api_key: apiKey}, timeout:0});
+
+        const mdlResp = await apiCall('/api/llm/models',{method:'GET', timeout:0});
+        const select = $('#llm-model');
+        select.prop('disabled', false).empty();
+        mdlResp.models.forEach(m=>select.append(`<option value="${m}">${m}</option>`));
+        if(preselect){ select.val(preselect); }
+        $('#save-llm').prop('disabled', false);
+        showNotification('Model list updated.', 'success');
+    }catch(e){
+        showNotification('Failed to fetch models: '+e.message, 'danger');
+        console.error(e);
+    }finally{
+        $('#llm-fetch-models').prop('disabled', false).text('Confirm Key & Fetch Models');
+    }
+}
+
+// Fetch models on button click (after user entered API key)
+$(document).on('click', '#llm-fetch-models', async function(){
+    const key = $('#llm-api-key').val().trim();
+    if(!key){ showNotification('Please enter an API key first.','warning'); return; }
+    await fetchAndPopulateModels(key, null);
+}); 

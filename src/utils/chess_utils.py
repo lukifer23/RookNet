@@ -6,7 +6,7 @@ Shared functions for chess position processing, data handling, and model utiliti
 import chess
 import numpy as np
 from typing import Optional, Dict, List, Tuple
-from src.utils.chess_env import ChessEnvironment
+from utils.chess_env import ChessEnvironment
 
 def board_to_tensor(board: chess.Board) -> np.ndarray:
     """

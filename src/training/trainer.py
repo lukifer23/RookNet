@@ -123,6 +123,33 @@ class ChessTrainer:
         self.train_losses = []
         self.val_losses = []
         
+        # ------------------------------------------------------------------
+        # Optional experiment trackers
+        # ------------------------------------------------------------------
+        from torch.utils.tensorboard import SummaryWriter  # local import to avoid heavy dep if unused
+
+        self.tb_writer: Optional[SummaryWriter] = None
+        if self.config.get("logging", {}).get("tensorboard", True):
+            tb_dir = self.log_dir / "tb"
+            tb_dir.mkdir(exist_ok=True)
+            self.tb_writer = SummaryWriter(log_dir=str(tb_dir))
+
+        self.wandb_run: Optional[object] = None
+        if self.config.get("logging", {}).get("use_wandb", False):
+            try:
+                import wandb
+
+                wandb_project = self.config["logging"].get("wandb_project", "ChessTrainer")
+                wandb_entity = self.config["logging"].get("wandb_entity")
+                self.wandb_run = wandb.init(
+                    project=wandb_project,
+                    entity=wandb_entity,
+                    config=self.config,
+                    dir=str(self.log_dir),
+                )
+            except Exception as e:  # noqa: BLE001  # Best-effort – don't crash training
+                logger.warning(f"W&B init failed: {e}")
+        
         logger.info(f"Trainer initialized with device: {self.device}")
         logger.info(f"Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
     
@@ -130,7 +157,7 @@ class ChessTrainer:
         """Create optimizer based on config."""
         optimizer_name = self.config["training"]["optimizer"].lower()
         lr = float(self.config["training"]["learning_rate"])
-        weight_decay = float(self.config["training"]["weight_decay"])
+        weight_decay = float(self.config["training"].get("weight_decay", 0))
         
         if optimizer_name == "adam":
             return optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -367,16 +394,26 @@ class ChessTrainer:
     
     def _log_training_step(self, loss: float) -> None:
         """Log training step metrics."""
-        # Simple console logging for now
-        # TODO: Add TensorBoard/W&B integration
-        pass
+        if self.tb_writer:
+            self.tb_writer.add_scalar("train/loss", loss, self.step)
+
+        if self.wandb_run:
+            try:
+                import wandb
+
+                wandb.log({"train/loss": loss, "step": self.step}, step=self.step)
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"wandb.log error: {e}")
+
+        # Console fallback
+        logger.debug(f"Step {self.step}: loss={loss:.4f}")
 
 
 def main():
     """Main training function."""
     
     # Load configuration
-    config_path = "configs/config.yaml"
+    config_path = "configs/config.v2.yaml"
     if Path(config_path).exists():
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
@@ -416,9 +453,14 @@ def main():
     latest_data_file = max(data_files, key=lambda x: x.stat().st_mtime)
     logger.info(f"Using training data: {latest_data_file}")
     
-    # For now, use same file for train/val (TODO: implement proper splits)
-    train_dataset = ChessDataset(str(latest_data_file))
-    val_dataset = ChessDataset(str(latest_data_file))
+    # ------------------------------------------------------------------
+    # Train / validation split – configurable ratio (default 90/10)
+    # ------------------------------------------------------------------
+    full_dataset = ChessDataset(str(latest_data_file))
+    val_ratio = float(config["training"].get("val_split", 0.1))
+    val_size = max(1, int(len(full_dataset) * val_ratio))
+    train_size = len(full_dataset) - val_size
+    train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
     
     # Create data loaders
     train_loader = DataLoader(

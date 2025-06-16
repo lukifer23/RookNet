@@ -1,86 +1,55 @@
 # src/utils/move_encoder.py
+"""Flat 4096-index move encoder.
+
+The mapping is simply ``index = from_square * 64 + to_square``.  Promotions are
+collapsed to the underlying *to* square (queen promotion implicit).  This keeps
+the policy head compact and fully compatible with AlphaZero-style training.
+"""
+
 import chess
 
-# Define a fixed, canonical mapping of moves.
-# This is a simplified version of the AlphaZero-style 8x8x73 representation.
-# We will use a flat vector of size 4672 for all possible moves.
-# This ensures no collisions and provides a stable target for the policy head.
+POLICY_VECTOR_SIZE = 4096  # 64 × 64
 
-# Generate all possible queen moves (from, to)
-QUEEN_MOVES = []
-for from_sq in chess.SQUARES:
-    for to_sq in chess.SQUARES:
-        if from_sq == to_sq:
-            continue
-        # Check if it's a valid queen-like move (rank, file, or diagonal)
-        if chess.square_distance(from_sq, to_sq) == 1 or \
-           abs(chess.square_file(from_sq) - chess.square_file(to_sq)) == abs(chess.square_rank(from_sq) - chess.square_rank(to_sq)) or \
-           chess.square_file(from_sq) == chess.square_file(to_sq) or \
-           chess.square_rank(from_sq) == chess.square_rank(to_sq):
-            QUEEN_MOVES.append(chess.Move(from_sq, to_sq))
 
-# Generate all possible knight moves
-KNIGHT_MOVES = []
-for from_sq in chess.SQUARES:
-    for to_sq in chess.SQUARES:
-        if chess.square_distance(from_sq, to_sq) > 2:
-            continue
-        file_dist = abs(chess.square_file(from_sq) - chess.square_file(to_sq))
-        rank_dist = abs(chess.square_rank(from_sq) - chess.square_rank(to_sq))
-        if file_dist == 1 and rank_dist == 2:
-            KNIGHT_MOVES.append(chess.Move(from_sq, to_sq))
-        if file_dist == 2 and rank_dist == 1:
-            KNIGHT_MOVES.append(chess.Move(from_sq, to_sq))
-
-# Generate underpromotions (knight, bishop, rook)
-UNDERPROMOTIONS = []
-for from_file in range(8):
-    for to_file in range(8):
-        # Pawn on 7th rank promoting
-        if abs(from_file - to_file) <= 1:
-            from_sq_w = chess.square(from_file, 6)
-            to_sq_w = chess.square(to_file, 7)
-            for piece in [chess.KNIGHT, chess.BISHOP, chess.ROOK]:
-                UNDERPROMOTIONS.append(chess.Move(from_sq_w, to_sq_w, promotion=piece))
-        # Pawn on 2nd rank promoting
-        if abs(from_file - to_file) <= 1:
-            from_sq_b = chess.square(from_file, 1)
-            to_sq_b = chess.square(to_file, 0)
-            for piece in [chess.KNIGHT, chess.BISHOP, chess.ROOK]:
-                UNDERPROMOTIONS.append(chess.Move(from_sq_b, to_sq_b, promotion=piece))
-
-# Create the full move mapping
-# This list is ordered and provides the canonical index for each move.
-CANONICAL_MOVE_LIST = sorted(list(set(QUEEN_MOVES + KNIGHT_MOVES + UNDERPROMOTIONS)), key=lambda m: m.uci())
-
-# Create a dictionary for fast lookups
-MOVE_TO_INDEX = {move: i for i, move in enumerate(CANONICAL_MOVE_LIST)}
-INDEX_TO_MOVE = {i: move for i, move in enumerate(CANONICAL_MOVE_LIST)}
-
-POLICY_VECTOR_SIZE = len(CANONICAL_MOVE_LIST)
-
-def encode_move(move: chess.Move) -> int:
-    """
-    Converts a chess.Move object to its canonical integer index.
-    Handles queen promotions by mapping them to their non-promoting equivalent.
-    """
-    # Handle standard queen promotions by mapping them to the non-promoting move
-    if move.promotion == chess.QUEEN:
-        move.promotion = None
-    
-    return MOVE_TO_INDEX.get(move)
-
-def decode_move(index: int) -> chess.Move:
-    """
-    Converts an integer index back to its canonical chess.Move object.
-    """
-    return INDEX_TO_MOVE.get(index)
-
-def get_policy_vector_size() -> int:
-    """
-    Returns the total size of the policy vector.
-    """
+def get_policy_vector_size() -> int:  # noqa: D401
     return POLICY_VECTOR_SIZE
+
+
+def move_to_index(move: chess.Move) -> int:
+    """Map *move* to flat 0-4095 index.
+
+    Any promotion piece information is ignored; promotions map to the same
+    index as the non-promotion move (queen by convention).
+    """
+    return move.from_square * 64 + move.to_square
+
+
+def index_to_move(index: int, board: chess.Board) -> chess.Move:  # noqa: D401
+    """Inverse of :pyfunc:`move_to_index`.
+
+    For pawn moves that reach the last rank we default to *queen promotion*.
+    """
+    from_square = index // 64
+    to_square = index % 64
+
+    piece = board.piece_at(from_square)
+    if piece and piece.piece_type == chess.PAWN:
+        to_rank = to_square // 8
+        if (piece.color == chess.WHITE and to_rank == 7) or (
+            piece.color == chess.BLACK and to_rank == 0
+        ):
+            return chess.Move(from_square, to_square, promotion=chess.QUEEN)
+
+    return chess.Move(from_square, to_square)
+
+
+def encode_move(move: chess.Move) -> int:  # alias for compatibility
+    idx = move_to_index(move)
+    return idx if idx < POLICY_VECTOR_SIZE else None
+
+
+def decode_move(index: int) -> chess.Move:  # alias for compatibility
+    return index_to_move(index, chess.Board())
 
 def get_legal_move_mask(board: chess.Board) -> list[int]:
     """

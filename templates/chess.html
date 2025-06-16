@@ -570,6 +570,9 @@
         <div class="header-section">
             <h1><i class="fas fa-chess"></i> Chess AI Interface</h1>
             <p>Neural Network powered chess with real-time analysis</p>
+            <button class="btn btn-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#settingsModal">
+                <i class="fas fa-cog"></i> LLM Settings
+            </button>
         </div>
 
         <!-- Status Panel -->
@@ -607,6 +610,10 @@
                         <option value="neural-vs-neural" class="highlight">Neural Net vs Neural Net (Auto)</option>
                         <option value="human-vs-leela" disabled>Human vs LeelaZero (Coming Soon)</option>
                         <option value="leela-vs-stockfish" class="highlight" disabled>LeelaZero vs Stockfish (Auto)</option>
+                        <!-- External LLM options -->
+                        <option value="human-vs-llm">Human vs Gemini LLM</option>
+                        <option value="llm-vs-human">Gemini LLM vs Human</option>
+                        <option value="llm-vs-stockfish" class="highlight">Gemini LLM vs Stockfish (Auto)</option>
                     </select>
                 </div>
                 
@@ -789,5 +796,30 @@
             }, 600);
         });
     </script>
+
+    <!-- LLM Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="settingsModalLabel">LLM Settings</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <label class="form-label">Gemini API Key</label>
+            <input id="llm-api-key" type="password" class="form-control" placeholder="Enter API Key">
+            <button id="llm-fetch-models" type="button" class="btn btn-secondary btn-sm mt-2">Confirm Key & Fetch Models</button>
+
+            <label class="form-label mt-3">Model</label>
+            <select id="llm-model" class="form-select" disabled>
+                <option selected disabled value="">Select a model…</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button id="save-llm" type="button" class="btn btn-primary" disabled>Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
 </body>
 </html> 

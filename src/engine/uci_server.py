@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 from typing import List
 
-sys.path.append(str(Path(__file__).resolve().parents[2] / 'src'))  # Add src to path
+# (Removed obsolete sys.path manipulation after package installation)
 
 import torch
 from models.chess_transformer import ChessTransformer

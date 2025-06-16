@@ -19,7 +19,7 @@ import subprocess
 import threading
 
 # Add src to path
-sys.path.append('src')
+# sys.path.append('src')
 from models.chess_transformer import ChessTransformer
 from utils.chess_env import ChessEnvironment
 from utils.config_loader import load_config
@@ -82,7 +82,8 @@ class ChessAIServer:
         
         # Core Components
         self.model = self._load_production_model()
-        self.mcts = MCTS(self.model, self.device) if self.model else None
+        # Wrap the model with AlphaZeroEngine abstraction for async/sync compatibility
+        self.az_engine = AlphaZeroEngine(self.model, config=CONFIG, device=self.device) if self.model else None
         self.chess_env = ChessEnvironment()
 
         # Stockfish Engine (for comparison)
@@ -144,9 +145,10 @@ class ChessAIServer:
             model.eval()
             
             if self.sys_config.get('compile_model', False):
-                logger.info("Compiling the model for the GUI...")
-                # Use a mode that is safe for dynamic shapes often found in GUIs
-                model = torch.compile(model, mode="reduce-overhead")
+                if self.device.type != 'cpu':
+                    logger.info("Compiling the model for the GUI...")
+                    # Use a mode that is safe for dynamic shapes often found in GUIs
+                    model = torch.compile(model, mode="reduce-overhead")
 
             logger.info(f"✅ Successfully loaded and prepared production model from {model_path}")
             return model
@@ -209,12 +211,12 @@ class ChessAIServer:
         """
         Determines the AI's next move using MCTS.
         """
-        if not self.mcts:
+        if not self.az_engine:
             return None, "AI model not loaded.", 0.0
 
         try:
             board = chess.Board(fen)
-            policy, value = self.mcts.search(board, add_noise=False)
+            policy, value = self.az_engine.search(board, add_noise=False)
             
             # Use the static method from the imported module
             move = dynamic_self_play.AlphaZeroTrainer._select_move(policy, temperature=0, board=board)

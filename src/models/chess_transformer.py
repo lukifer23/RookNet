@@ -35,7 +35,7 @@ class ChessResidualBlock(nn.Module):
         if self.use_attention:
             out = self.attention(out)
         
-        out += residual
+        out = out + residual  # avoid in-place operation for torch.compile compatibility
         return F.relu(out).contiguous()
 
 class SpatialAttention(nn.Module):
