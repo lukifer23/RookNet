@@ -1,6 +1,6 @@
 """Centralised GPU inference server for AlphaZero self-play workers.
 
-This process owns the compiled `ChessTransformer` on the `mps` / CUDA GPU and
+This process owns the compiled `ChessTransformer` on the CUDA GPU and
 services batched inference requests coming from CPU workers via two
 multiprocessing queues:
 
@@ -9,7 +9,7 @@ multiprocessing queues:
 
 The caller must ensure `request_q` and `response_q` are `multiprocessing.Queue`
 objects created by a `multiprocessing.Manager()` to allow cross-process
-transfer on macOS.
+transfer.
 """
 from __future__ import annotations
 
@@ -67,8 +67,7 @@ def _load_model(checkpoint_path: str | None, device: torch.device) -> ChessTrans
         model.load_state_dict(sd, strict=False)
 
     # ------------------------------------------------------------------
-    # Compile only on CUDA (A100 / RTX etc.).  MPS dynamic-shape kernels are
-    # still unstable – disabling compile avoids silent hangs.
+    # Compile only on CUDA (A100 / RTX etc.).
     # ------------------------------------------------------------------
     if device.type == "cuda":
         try:
@@ -92,7 +91,7 @@ def run_inference_server(
     request_q,  # multiprocessing.Queue
     response_q,  # multiprocessing.Queue
     checkpoint_path: str | None = None,
-    device_str: str = "mps",
+    device_str: str = "cuda",
 ):
     """Entry point for the dedicated GPU inference process."""
     # Setup logging inside subprocess
@@ -101,7 +100,7 @@ def run_inference_server(
         format="%(asctime)s - gpu_server - %(levelname)s - %(message)s",
     )
 
-    device = torch.device(device_str if torch.backends.mps.is_available() else "cpu")
+    device = torch.device(device_str if device_str == "cuda" and torch.cuda.is_available() else "cpu")
     LOGGER.info("GPU inference server starting on device %s", device)
 
     model = _load_model(checkpoint_path, device)

@@ -250,7 +250,6 @@ class ChessTransformer(nn.Module):
         
         # Transformer strategic processing
         # Clone the tensor to break the memory layout dependency before the transformer.
-        # This is a workaround for a known torch.compile issue on MPS.
         transformer_features = self.transformer(cnn_features.clone())
         
         # Feature fusion (CNN + Transformer)

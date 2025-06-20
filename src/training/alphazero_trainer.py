@@ -145,8 +145,6 @@ def play_game_worker(worker_id: int, config_path: str, request_q, result_q, game
         desired_device = config['system']['device']
         if desired_device == 'cuda' and torch.cuda.is_available():
             device = torch.device('cuda')
-        elif desired_device == 'mps' and torch.backends.mps.is_available():
-            device = torch.device('mps')
         else:
             device = torch.device('cpu')
 
@@ -267,8 +265,6 @@ class AlphaZeroTrainer:
         desired_device = self.config['system']['device']
         if desired_device == 'cuda' and torch.cuda.is_available():
             self.device = torch.device('cuda')
-        elif desired_device == 'mps' and torch.backends.mps.is_available():
-            self.device = torch.device('mps')
         else:
             self.device = torch.device('cpu')
         self.logger.info(f"Using device: {self.device}")
@@ -308,7 +304,7 @@ class AlphaZeroTrainer:
         # Launch dedicated GPU inference server
         ckpt_dir = self.config['training']['checkpoints']['dir']
         best_model = os.path.join(ckpt_dir, self.config['training']['checkpoints']['best_opponent_model'])
-        device_str = 'mps' if torch.backends.mps.is_available() else str(self.device)
+        device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.inference_server_proc = Process(
             target=run_inference_server,
             args=(self.inference_request_queue, self.inference_result_queue, best_model, device_str),

@@ -77,7 +77,7 @@ class ChessAIServer:
         self.checkpoint_config = CONFIG['training']['checkpoints']
 
         # Device
-        self.device = torch.device(self.sys_config['device'] if self.sys_config['device'] != 'auto' else ('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'))
+        self.device = torch.device(self.sys_config['device'] if self.sys_config['device'] != 'auto' else ('cuda' if torch.cuda.is_available() else 'cpu'))
         logger.info(f"GUI using device: {self.device}")
         
         # Core Components

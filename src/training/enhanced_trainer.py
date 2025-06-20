@@ -126,7 +126,7 @@ class EnhancedTrainer:
             config: Training configuration dictionary
         """
         self.config = config
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # Training parameters
         self.batch_size = config["training"]["batch_size"]

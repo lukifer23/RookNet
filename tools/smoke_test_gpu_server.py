@@ -22,7 +22,7 @@ def main():
 
     # Launch server (uses best opponent checkpoint if available)
     ckpt = os.path.join("models", "alpha_zero_checkpoints", "best_opponent.pt")
-    srv = mp.Process(target=run_inference_server, args=(req_q, res_q, ckpt, "mps"), daemon=False)
+    srv = mp.Process(target=run_inference_server, args=(req_q, res_q, ckpt, "cuda"), daemon=False)
     srv.start()
 
     # Prepare random board tensor

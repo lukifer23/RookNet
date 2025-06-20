@@ -112,7 +112,7 @@ class MCTSTransformerPlayer:
                  model_path: Optional[str] = None,
                  model_config: str = "superhuman",
                  mcts_config: MCTSConfig = None,
-                 device: str = "mps"):
+                 device: str = "cuda"):
         
         self.device = torch.device(device)
         self.mcts_config = mcts_config or MCTSConfig()
@@ -371,9 +371,9 @@ class MCTSTransformerPlayer:
         
         return analysis
 
-def create_ultimate_player(model_path: str = None, 
+def create_ultimate_player(model_path: str = None,
                          simulations: int = 800,
-                         device: str = "mps") -> MCTSTransformerPlayer:
+                         device: str = "cuda") -> MCTSTransformerPlayer:
     """Create ultimate chess player with optimal settings"""
     
     config = MCTSConfig(

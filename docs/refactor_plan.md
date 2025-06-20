@@ -16,7 +16,7 @@
 - [x] C3 Write migration script to remap/pad existing checkpoints.
 
 ## Milestone D – Training Loop Repairs
-- [x] D1 Compile model only once on GPU; guard with fallback to eager on MPS (`torch.compile` wrapped in try/except).
+- [x] D1 Compile model only once on GPU; fallback to eager mode if `torch.compile` fails.
 - [x] D2 Introduce dedicated GPU inference server; keep workers CPU-only.
    - [x] D2.1 Add `gpu_inference_server.py` module.
    - [x] D2.2 Trainer launches server and shares queues.
@@ -42,7 +42,7 @@
 ## Milestone H – Performance Roadmap
 - [ ] H1 Enable AMP + gradient accumulation for large effective batch.
 - [ ] H2 Experiment with memory-efficient optimizers (PagedAdamW, Lion).
-- [x] H3 Upgraded to PyTorch 2.8-dev; awaiting upstream fix for MPS Inductor dynamic shape bug.
+- [x] H3 Upgraded to PyTorch 2.8-dev; improved Inductor stability on CUDA.
 
 ---
 Legend
