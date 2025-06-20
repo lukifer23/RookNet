@@ -16,3 +16,4 @@ __pycache__/
 chess_ai_env/
 *.egg-info/
 .DS_Store .git_backup_*
+RookNet/

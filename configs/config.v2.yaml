@@ -104,7 +104,7 @@ evaluation:
   # --- Stockfish Engine Benchmark ---
   stockfish:
     # Path to the Stockfish executable.
-    # On macOS/Linux with `brew install stockfish` or `apt install stockfish`,
+    # On Linux with `apt install stockfish` or using a package manager,
     # the path might be automatically found. On Windows, provide the full path.
     path: "stockfish"
 
@@ -142,8 +142,8 @@ web_gui:
 # 6. SYSTEM & ENVIRONMENT
 # ==============================================================================
 system:
-  # Hardware acceleration: "cuda", "mps", or "cpu"
-  device: "mps" # run trainer on GPU
+  # Hardware acceleration: "cuda" or "cpu"
+  device: "cuda" # run trainer on GPU
   compile_model: false
   self_play_workers: 4
   evaluation_workers: 2

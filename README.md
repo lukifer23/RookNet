@@ -7,7 +7,7 @@ Superhuman Chess AI using a hybrid CNN+Transformer AlphaZero-style architecture.
 - AlphaZero-style dynamic self-play with parallel workers
 - Parallelized evaluation and detailed logging
 - Live web GUI for playing against the model
-- Cross-platform: macOS, Linux, Windows
+- Runs on x86 CPUs with CUDA or AMD GPU acceleration
 
 ## Quick Start
 1. **Clone the repo:**
