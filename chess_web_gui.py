@@ -27,8 +27,8 @@ from utils.move_encoder import get_policy_vector_size
 
 # Import MCTS for move generation
 # We need to import the classes, and the file itself to access the static methods
-from dynamic_self_play import MCTSNode, MCTS, AlphaZeroTrainer
-import dynamic_self_play
+from search.mcts import MCTS
+from src.training.alphazero_trainer import select_move
 
 # --- Configuration & Global Setup ---
 try:
@@ -218,8 +218,7 @@ class ChessAIServer:
             board = chess.Board(fen)
             policy, value = self.az_engine.search(board, add_noise=False)
             
-            # Use the static method from the imported module
-            move = dynamic_self_play.AlphaZeroTrainer._select_move(policy, temperature=0, board=board)
+            move = select_move(policy, temperature=0, board=board)
             
             if move:
                 return move.uci(), None, float(value)

@@ -27,7 +27,8 @@ import torch
 from models.chess_transformer import ChessTransformer
 from utils.config_loader import load_config
 from utils.move_encoder import get_policy_vector_size
-from dynamic_self_play import MCTS
+from search.mcts import MCTS
+from src.training.alphazero_trainer import select_move
 
 CONFIG = load_config("configs/config.v2.yaml")
 POLICY_SIZE = get_policy_vector_size()
@@ -79,8 +80,7 @@ def parse_position(tokens: List[str]):
 
 def best_move():
     policy, _ = mcts.search(current_board, add_noise=False)
-    from dynamic_self_play import AlphaZeroTrainer
-    move = AlphaZeroTrainer._select_move(policy, temperature=0, board=current_board)
+    move = select_move(policy, temperature=0, board=current_board)
     if move is None:
         return '0000'
     return move.uci()

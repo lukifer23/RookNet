@@ -41,6 +41,12 @@ WIN = 1.0
 LOSS = -1.0
 DRAW = 0.0
 
+# --- Early Termination Parameters ---
+RESIGN_THRESHOLD = 0.95  # Value head confidence to trigger early resign
+RESIGN_STREAK = 20       # Consecutive plies above threshold before resign
+# Hard limit on the number of plies in a single game
+MAX_PLIES = 400
+
 # ------------------------------------------------------------------
 # Silence noisy torch compile warnings globally
 # ------------------------------------------------------------------
@@ -232,11 +238,18 @@ def play_game_worker(
         # --- Game Loop ---
         board_states, policies, values_ph = [], [], []  # values_ph is a placeholder
 
-        temp_config = config["training"]["alpha_zero"]["temperature"]
+        temp_initial = 1.0
+        temp_final = 0.0
+        consecutive_high_value = 0
+        consecutive_low_value = 0
 
         while not board.is_game_over(claim_draw=True):
-            # The number of simulations is now read from the config within MCTS
-            move = mcts.search(board)
+            # Run MCTS search to update the root
+            mcts.search(board)
+
+            root_value = 0.0
+            if mcts.root and mcts.root.visit_count > 0:
+                root_value = mcts.root.total_action_value / mcts.root.visit_count
 
             # Get the training policy from the MCTS root node
             training_policy = np.zeros(get_policy_vector_size(), dtype=np.float32)
@@ -254,9 +267,35 @@ def play_game_worker(
             policies.append(training_policy)
             values_ph.append(0)  # Placeholder, will be backfilled
 
+            # Early resign or win detection
+            if root_value >= RESIGN_THRESHOLD:
+                consecutive_high_value += 1
+                consecutive_low_value = 0
+            elif root_value <= -RESIGN_THRESHOLD:
+                consecutive_low_value += 1
+                consecutive_high_value = 0
+            else:
+                consecutive_high_value = 0
+                consecutive_low_value = 0
+
+            if (
+                consecutive_high_value >= RESIGN_STREAK
+                or consecutive_low_value >= RESIGN_STREAK
+            ):
+                break
+
+            # Temperature schedule by ply
+            ply_count = len(board.move_stack)
+            temperature = temp_initial if ply_count < 50 else temp_final
+
+            move = select_move(training_policy, temperature, board)
+
             if move is None:
                 break
             board.push(move)
+
+            if len(board.move_stack) >= MAX_PLIES:
+                break
 
         # --- Game Finalization ---
         result_str = board.result()
@@ -404,6 +443,12 @@ class AlphaZeroTrainer:
         while self.iteration < max_iterations:
             self.iteration += 1
             self.logger.info(f"--- Iteration {self.iteration}/{max_iterations} ---")
+
+            # Dynamic learning rate warm-up similar to the legacy trainer
+            base_lr = self.config["training"]["alpha_zero"]["learning_rate"]
+            warm_factor = 1.5 if self.iteration <= 20 else 1.0
+            for pg in self.optimizer.param_groups:
+                pg["lr"] = base_lr * warm_factor
 
             # 1. Self-Play Phase
             self.run_self_play()
@@ -924,6 +969,32 @@ class AlphaZeroTrainer:
                 self.logger.error(
                     f"Failed to load progress from {self.progress_file}: {e}. Starting with default values."
                 )
+
+
+# ------------------------------- Move Selection -------------------------------
+
+def select_move(policy: np.ndarray, temperature: float, board: chess.Board) -> chess.Move:
+    """Selects a legal move using the given policy and temperature."""
+    legal_moves_map = {
+        encode_move(mv): mv for mv in board.legal_moves if encode_move(mv) is not None
+    }
+    if not legal_moves_map:
+        return random.choice(list(board.legal_moves)) if list(board.legal_moves) else None
+
+    legal_indices = list(legal_moves_map.keys())
+    legal_policy = policy[legal_indices]
+
+    if np.sum(legal_policy) == 0:
+        return legal_moves_map.get(random.choice(legal_indices))
+
+    if temperature == 0:
+        move_idx = legal_indices[int(np.argmax(legal_policy))]
+    else:
+        distribution = np.power(legal_policy, 1.0 / temperature)
+        distribution /= np.sum(distribution)
+        move_idx = np.random.choice(legal_indices, p=distribution)
+
+    return legal_moves_map.get(move_idx)
 
 
 # --------------------------- Inference queue helpers --------------------------
