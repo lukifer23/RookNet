@@ -23,12 +23,18 @@ Superhuman Chess AI using a hybrid CNN+Transformer AlphaZero-style architecture.
    ```
 3. **Resume or start training:**
    ```sh
-   python dynamic_self_play.py
+   python src/training/alphazero_trainer.py
    ```
 4. **Launch the web GUI:**
    ```sh
-   python chess_web_gui.py
-   ```
+  python chess_web_gui.py
+  ```
+
+## Recommended Settings
+- The default configuration trains a ~64M parameter model with 384 CNN channels and 20 residual blocks.
+- Set `iterations` to 1000 and `games_per_iteration` to 50 for long runs.
+- Evaluation happens every 5 iterations with 20 games to promote the best model.
+- A GPU with at least **12 GB** of VRAM (e.g. RTX 3060) is recommended. CPU-only training is possible but very slow.
 
 ## Checkpoints
 - `models/alpha_zero_checkpoints/latest_player.pt`: Most recent player model
