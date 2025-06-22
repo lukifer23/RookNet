@@ -22,8 +22,9 @@ dependencies = [
     "tqdm>=4.66",
     "numpy>=1.23",
     "python-chess>=1.999",
-    "webdataset>=0.2.48",
-    "psutil>=5.9"
+    "webdataset>=0.2.63",
+    "PyYAML>=6.0",
+    "httpx>=0.27"
 ]
 
 [project.optional-dependencies]
@@ -32,7 +33,12 @@ wandb = ["wandb>=0.16"]
 dev = [
     "pytest>=7.4",
     "ruff>=0.4",
-    "black>=24.4"
+    "black>=24.4",
+    "tensorboard>=2.13"
+]
+web = [
+    "Flask>=2.3",
+    "flask-cors>=4.0"
 ]
 
 [tool.setuptools]

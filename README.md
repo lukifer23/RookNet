@@ -19,7 +19,7 @@ Superhuman Chess AI using a hybrid CNN+Transformer AlphaZero-style architecture.
    ```sh
    python3 -m venv chess_ai_env
    source chess_ai_env/bin/activate
-   pip install -r requirements.txt
+   pip install -e .[dev]
    ```
 3. **Resume or start training:**
    ```sh
