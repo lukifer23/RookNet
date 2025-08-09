@@ -12,6 +12,7 @@ import numpy as np
 from typing import List, Tuple, Optional, Dict, Any
 import logging
 from pathlib import Path
+import shutil
 import torch
 from .config_loader import load_config
 
@@ -51,12 +52,22 @@ class ChessEnvironment:
         """Initializes and starts the Stockfish engine."""
         if self.engine:
             self.stop_engine()
-        
+
         stockfish_path = self.config.get('evaluation', {}).get('stockfish', {}).get('path', 'stockfish')
-        try:
-            self.engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Stockfish engine not found at '{stockfish_path}'. Please install Stockfish or update the path in your config file.")
+        engine_path = Path(stockfish_path)
+
+        # If the path is relative or does not exist, attempt to locate it in the system PATH.
+        if not engine_path.is_absolute() or not engine_path.exists():
+            resolved = shutil.which(stockfish_path)
+            if resolved:
+                engine_path = Path(resolved)
+
+        if not engine_path.exists():
+            raise FileNotFoundError(
+                f"Stockfish engine not found at '{stockfish_path}'. Please install Stockfish or update the path in your config file."
+            )
+
+        self.engine = chess.engine.SimpleEngine.popen_uci(str(engine_path))
 
     def stop_engine(self):
         """Stops the chess engine."""
