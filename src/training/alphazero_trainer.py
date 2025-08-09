@@ -361,7 +361,11 @@ class AlphaZeroTrainer:
     7. Updates the "best" model if the new one is significantly better.
     """
 
-    def __init__(self, config_path="configs/config.v2.yaml"):
+    def __init__(
+        self,
+        config_path="configs/config.v2.yaml",
+        replay_buffer: StreamingReplayBuffer | None = None,
+    ):
         """Initializes the trainer, loading configuration and setting up components."""
         self.config = load_config(config_path)
         self.config_path = config_path
@@ -386,7 +390,7 @@ class AlphaZeroTrainer:
         # --- Training Components ---
         self.optimizer = self._create_optimizer()
         self.scheduler = self._create_scheduler()
-        self.replay_buffer = StreamingReplayBuffer(
+        self.replay_buffer = replay_buffer or StreamingReplayBuffer(
             root_dir=self.config["data"]["replay_buffer_dir"]
         )
 
@@ -1047,5 +1051,13 @@ if __name__ == "__main__":
     except RuntimeError:
         pass  # Already set
 
-    trainer = AlphaZeroTrainer(config_path="configs/config.v2.yaml")
-    trainer.run()
+    config_path = "configs/config.v2.yaml"
+    config = load_config(config_path)
+    with StreamingReplayBuffer(
+        root_dir=config["data"]["replay_buffer_dir"]
+    ) as replay_buffer:
+        trainer = AlphaZeroTrainer(
+            config_path=config_path,
+            replay_buffer=replay_buffer,
+        )
+        trainer.run()

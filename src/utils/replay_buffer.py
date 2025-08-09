@@ -78,7 +78,20 @@ class StreamingReplayBuffer:
             self._games += 1
 
     def close(self):
-        self._writer.close()
+        """Flush and close the underlying shard writer."""
+        if self._writer is not None:
+            self._writer.close()
+            self._writer = None
+
+    # ------------------------------------------------------------------
+    # Context manager protocol
+    # ------------------------------------------------------------------
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
 
     # ------------------------------------------------------------------
     # Dataset helper
@@ -146,4 +159,4 @@ class StreamingReplayBuffer:
         return states, policies, values
 
     def __len__(self):
-        return self._written 
+        return self._written
