@@ -28,7 +28,7 @@ from utils.move_encoder import get_policy_vector_size
 # Import MCTS for move generation
 # We need to import the classes, and the file itself to access the static methods
 from search.mcts import MCTS
-from src.training.alphazero_trainer import select_move
+from src.engine.inference_helpers import select_move
 
 # --- Configuration & Global Setup ---
 try:
