@@ -1,19 +1,18 @@
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(ROOT / "src"))
-
 import chess
 import pytest
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(ROOT / "src"))
+
+from models.base_model import BaseModel  # noqa: E402
+from search.mcts import MCTS  # noqa: E402
+from utils.move_encoder import get_policy_vector_size  # noqa: E402
+
 # Skip entire module if torch is unavailable
 torch = pytest.importorskip("torch")
-
-from search.mcts import MCTS
-from utils.move_encoder import get_policy_vector_size
-from utils.board_utils import board_to_tensor
-from models.base_model import BaseModel
 
 
 class DummyModel(BaseModel):

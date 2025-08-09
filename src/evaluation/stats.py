@@ -6,6 +6,7 @@ Includes:
 The implementations are intentionally lightweight (pure-Python, no third-party deps)
 so they can run anywhere, including minimal CI containers.
 """
+
 from __future__ import annotations
 
 import math
@@ -26,7 +27,7 @@ PI = math.pi
 
 
 def _g(phi: float) -> float:
-    return 1 / math.sqrt(1 + 3 * phi ** 2 / PI ** 2)
+    return 1 / math.sqrt(1 + 3 * phi**2 / PI**2)
 
 
 def _e(mu: float, mu_j: float, phi_j: float) -> float:
@@ -64,17 +65,17 @@ def glicko2_update(
     g_ = _g(phi_j)
 
     # Step 3: variance
-    v = 1 / (g_ ** 2 * E * (1 - E))
+    v = 1 / (g_**2 * E * (1 - E))
 
     # Step 4: delta
     delta = v * g_ * (score - E)
 
     # Step 5: volatility update (simplified with single iteration of Newton)
-    a = math.log(vol ** 2)
+    a = math.log(vol**2)
     A = a
     B = None
-    if delta ** 2 > phi ** 2 + v:
-        B = math.log(delta ** 2 - phi ** 2 - v)
+    if delta**2 > phi**2 + v:
+        B = math.log(delta**2 - phi**2 - v)
     else:
         k = 1
         while True:
@@ -101,11 +102,11 @@ def glicko2_update(
     new_vol = math.exp(A / 2)
 
     # Step 6: new deviation
-    phi_star = math.sqrt(phi ** 2 + new_vol ** 2)
-    phi_prime = 1 / math.sqrt(1 / phi_star ** 2 + 1 / v)
+    phi_star = math.sqrt(phi**2 + new_vol**2)
+    phi_prime = 1 / math.sqrt(1 / phi_star**2 + 1 / v)
 
     # Step 7: new rating
-    mu_prime = mu + phi_prime ** 2 * g_ * (score - E)
+    mu_prime = mu + phi_prime**2 * g_ * (score - E)
 
     # Convert back to Elo scale
     new_rating = 173.7178 * mu_prime + 1500
@@ -116,9 +117,10 @@ def glicko2_update(
 
 def _f(x, delta, phi, v, a):
     ex = math.exp(x)
-    num = ex * (delta ** 2 - phi ** 2 - v - ex)
-    den = 2 * (phi ** 2 + v + ex) ** 2
-    return (num / den) - ((x - a) / (TAU ** 2))
+    num = ex * (delta**2 - phi**2 - v - ex)
+    den = 2 * (phi**2 + v + ex) ** 2
+    return (num / den) - ((x - a) / (TAU**2))
+
 
 # ---------------------------------------------------------------------------
 # SPRT implementation (LLR for binomial process)
@@ -149,4 +151,4 @@ def sprt_decide(llr: float, alpha: float = 0.05, beta: float = 0.05) -> str:
         return "H1"
     if llr < B:
         return "H0"
-    return "continue" 
+    return "continue"

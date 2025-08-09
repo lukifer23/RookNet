@@ -1,14 +1,13 @@
-from __future__ import annotations
-
 """Disk-backed replay buffer based on WebDataset shards.
 
 The buffer streams self-play tuples (board_state: np.ndarray, policy: np.ndarray, value: float)
 into sharded .tar files and exposes an iterable WebDataset pipeline for training.
 """
 
-import os
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Iterable, Tuple, Any
+from typing import Iterable, Tuple
 
 import numpy as np
 
@@ -31,7 +30,13 @@ class StreamingReplayBuffer:
         Whether to gzip shards (adds .gz extension).
     """
 
-    def __init__(self, root_dir: str | Path, *, samples_per_shard: int = 10_000, compress: bool = False) -> None:
+    def __init__(
+        self,
+        root_dir: str | Path,
+        *,
+        samples_per_shard: int = 10_000,
+        compress: bool = False,
+    ) -> None:
         self.root = Path(root_dir)
         self.root.mkdir(parents=True, exist_ok=True)
         self.samples_per_shard = samples_per_shard
@@ -39,7 +44,9 @@ class StreamingReplayBuffer:
 
         base = self.root / "shard-%06d.tar"
         pattern = str(base) + (".gz" if compress else "")
-        self._writer = wds.ShardWriter(pattern, maxcount=samples_per_shard, maxsize=10 * 2**30)  # 10 GiB cap
+        self._writer = wds.ShardWriter(
+            pattern, maxcount=samples_per_shard, maxsize=10 * 2**30
+        )  # 10 GiB cap
         self._written = 0
 
         # Lightweight RAM cache for quick sampling if the dataset is small / training start-up.
@@ -61,17 +68,21 @@ class StreamingReplayBuffer:
     def add(self, board: np.ndarray, policy: np.ndarray, value: float):
         """Add a single (state, policy, value) tuple to the buffer."""
         key = f"{self._written:09d}"
-        self._writer.write({
-            "__key__": key,
-            "board.npy": board.astype(np.float16),
-            "policy.npy": policy.astype(np.float16),
-            "value.txt": str(value).encode(),
-        })
+        self._writer.write(
+            {
+                "__key__": key,
+                "board.npy": board.astype(np.float16),
+                "policy.npy": policy.astype(np.float16),
+                "value.txt": str(value).encode(),
+            }
+        )
         self._written += 1
 
         # Opportunistic store in RAM for small-buffer sampling.
         if len(self._ram_cache) < self._ram_cache_limit:
-            self._ram_cache.append((board.astype(np.float32), policy.astype(np.float32), float(value)))
+            self._ram_cache.append(
+                (board.astype(np.float32), policy.astype(np.float32), float(value))
+            )
 
         # Heuristic: treat a terminal value (±1 or 0) as end-of-game marker. Count first appearance per game.
         if value in (-1.0, 0.0, 1.0):
@@ -84,10 +95,14 @@ class StreamingReplayBuffer:
     # Dataset helper
     # ------------------------------------------------------------------
 
-    def webdataset(self, *, shuffle: int = 10_000, repeat: bool = True, shardshuffle: bool = False):
+    def webdataset(
+        self, *, shuffle: int = 10_000, repeat: bool = True, shardshuffle: bool = False
+    ):
         """Return a WebDataset pipeline for PyTorch DataLoader."""
         pattern = str(self.root / "shard-*.tar*")  # glob both .tar and .tar.gz
-        ds = wds.WebDataset(pattern, resampled=repeat, shardshuffle=shardshuffle).shuffle(shuffle)
+        ds = wds.WebDataset(
+            pattern, resampled=repeat, shardshuffle=shardshuffle
+        ).shuffle(shuffle)
         ds = ds.decode().to_tuple("board.npy", "policy.npy", "value.txt")
 
         # value.txt -> float tensor later; keep raw for now
@@ -106,7 +121,9 @@ class StreamingReplayBuffer:
     def to_webdataset(self, *args, **kwargs):  # noqa: D401
         return self.webdataset(*args, **kwargs)
 
-    def get_dataloader(self, *, batch_size: int = 256, num_workers: int = 2, shuffle: bool = True):
+    def get_dataloader(
+        self, *, batch_size: int = 256, num_workers: int = 2, shuffle: bool = True
+    ):
         """Return a PyTorch-compatible DataLoader backed by WebDataset."""
         import torch
         import webdataset as wds  # local import to avoid global dependency for users who don't train
@@ -133,8 +150,9 @@ class StreamingReplayBuffer:
         if not self._ram_cache:
             return None, None, None
 
-        import torch
         import random
+
+        import torch
 
         n = min(n, len(self._ram_cache))
         batch = random.sample(self._ram_cache, n)
@@ -146,4 +164,4 @@ class StreamingReplayBuffer:
         return states, policies, values
 
     def __len__(self):
-        return self._written 
+        return self._written

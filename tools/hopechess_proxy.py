@@ -9,10 +9,19 @@ lines that look like UCI commands (id, option, info, bestmove, etc.). All
 stderr from HopeChess is suppressed.
 """
 from __future__ import annotations
-import subprocess, sys, threading, re, os, signal, select, time
+
+import os
+import re
+import subprocess
+import sys
+import threading
 
 # --- Helpers --------------------------------------------------------------
-UCI_RE = re.compile(r"^(id|option|uciok|readyok|bestmove|info|copyprotection|registration|checkready|unknowncommand|go|stop|ponderhit|quit)", re.I)
+UCI_RE = re.compile(
+    r"^(id|option|uciok|readyok|bestmove|info|copyprotection|registration|checkready|unknowncommand|go|stop|ponderhit|quit)",
+    re.I,
+)
+
 
 def start_child(cmd: list[str]) -> subprocess.Popen:
     return subprocess.Popen(
@@ -22,10 +31,12 @@ def start_child(cmd: list[str]) -> subprocess.Popen:
         stderr=subprocess.DEVNULL,
         text=True,
         bufsize=1,
-        close_fds=os.name != 'nt',
+        close_fds=os.name != "nt",
     )
 
+
 # --- Main -----------------------------------------------------------------
+
 
 def main() -> None:
     if len(sys.argv) < 2:
@@ -70,5 +81,6 @@ def main() -> None:
             pass
         child.wait(timeout=5)
 
+
 if __name__ == "__main__":
-    main() 
+    main()

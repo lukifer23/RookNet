@@ -6,14 +6,21 @@ Expect:
     ✔ policy shape (4096,) and value scalar printed in <2 s.
 """
 
-import sys, pathlib
+import pathlib
+import sys
+
 # Ensure src package resolvable before project imports
 root = pathlib.Path(__file__).resolve().parents[1]
-sys.path.append(str(root / 'src'))
+sys.path.append(str(root / "src"))
 
-import os, time, multiprocessing as mp, numpy as np, torch, chess
-from engine.gpu_inference_server import run_inference_server
-from utils.board_utils import board_to_tensor
+import multiprocessing as mp  # noqa: E402
+import os  # noqa: E402
+import time  # noqa: E402
+
+import chess  # noqa: E402
+
+from engine.gpu_inference_server import run_inference_server  # noqa: E402
+from utils.board_utils import board_to_tensor  # noqa: E402
 
 
 def main():
@@ -22,7 +29,9 @@ def main():
 
     # Launch server (uses best opponent checkpoint if available)
     ckpt = os.path.join("models", "alpha_zero_checkpoints", "best_opponent.pt")
-    srv = mp.Process(target=run_inference_server, args=(req_q, res_q, ckpt, "cuda"), daemon=False)
+    srv = mp.Process(
+        target=run_inference_server, args=(req_q, res_q, ckpt, "cuda"), daemon=False
+    )
     srv.start()
 
     # Prepare random board tensor
@@ -39,7 +48,9 @@ def main():
             break
     elapsed = time.time() - start
 
-    print(f"✔ received in {elapsed*1000:.1f} ms → policy {policy.shape}, value {value:.3f}")
+    print(
+        f"✔ received in {elapsed*1000:.1f} ms → policy {policy.shape}, value {value:.3f}"
+    )
 
     srv.terminate()
     srv.join()
@@ -47,4 +58,4 @@ def main():
 
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
-    main() 
+    main()

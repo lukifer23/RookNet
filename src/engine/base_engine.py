@@ -1,5 +1,7 @@
 from typing import Protocol
+
 import chess
+
 
 class BaseEngine(Protocol):
     """Minimal interface any engine (neural-net, Stockfish, LLM, etc.) must provide."""
@@ -11,4 +13,4 @@ class BaseEngine(Protocol):
         Block-and-wait or perform asynchronous HTTP calls as desired, but expose
         an *async* API so callers can await concurrently.
         """
-        ... 
+        ...

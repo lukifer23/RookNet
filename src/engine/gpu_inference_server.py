@@ -11,21 +11,22 @@ The caller must ensure `request_q` and `response_q` are `multiprocessing.Queue`
 objects created by a `multiprocessing.Manager()` to allow cross-process
 transfer.
 """
+
 from __future__ import annotations
 
 import logging
 import os
+import queue
 import signal
 import time
+import warnings
+from contextlib import nullcontext
 from types import FrameType
 from typing import Tuple
-import queue
-import warnings
 
 import numpy as np
 import torch
 from torch.cuda.amp import autocast
-from contextlib import nullcontext
 
 from models.chess_transformer import ChessTransformer
 
@@ -34,7 +35,7 @@ from models.chess_transformer import ChessTransformer
 # ---------------------------------------------------------------------------
 
 BATCH_LIMIT = int(os.environ.get("NCT_GPU_BATCH", 128))  # max requests per batch
-SLEEP_MS = 0.1   # polling interval when no requests (Manager.Queue latency)
+SLEEP_MS = 0.1  # polling interval when no requests (Manager.Queue latency)
 LOGGER = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------
@@ -44,10 +45,12 @@ warnings.filterwarnings("ignore", category=UserWarning)
 for noisy in ("torch._dynamo", "torch._inductor"):
     logging.getLogger(noisy).setLevel(logging.ERROR)
 
+
 def _load_model(checkpoint_path: str | None, device: torch.device) -> ChessTransformer:
     """Create and compile the model, optionally loading checkpoint weights."""
     # Minimal config – adjust if you expose CLI flags later
     from utils.config_loader import load_config
+
     cfg = load_config("configs/config.v2.yaml")
     model_cfg = cfg["model"]["chess_transformer"]
 
@@ -72,11 +75,14 @@ def _load_model(checkpoint_path: str | None, device: torch.device) -> ChessTrans
     if device.type == "cuda":
         try:
             import torch._dynamo as _td
+
             _td.config.suppress_errors = True
             model = torch.compile(model, backend="inductor", mode="reduce-overhead")
             LOGGER.info("torch.compile succeeded → using compiled graph (cuda)")
         except Exception as exc:
-            LOGGER.warning("torch.compile failed on cuda: %s – falling back to eager", exc)
+            LOGGER.warning(
+                "torch.compile failed on cuda: %s – falling back to eager", exc
+            )
             torch._dynamo.reset()
 
     model.eval()
@@ -86,6 +92,7 @@ def _load_model(checkpoint_path: str | None, device: torch.device) -> ChessTrans
 # ---------------------------------------------------------------------------
 # Main server loop
 # ---------------------------------------------------------------------------
+
 
 def run_inference_server(
     request_q,  # multiprocessing.Queue
@@ -100,7 +107,9 @@ def run_inference_server(
         format="%(asctime)s - gpu_server - %(levelname)s - %(message)s",
     )
 
-    device = torch.device(device_str if device_str == "cuda" and torch.cuda.is_available() else "cpu")
+    device = torch.device(
+        device_str if device_str == "cuda" and torch.cuda.is_available() else "cpu"
+    )
     LOGGER.info("GPU inference server starting on device %s", device)
 
     model = _load_model(checkpoint_path, device)
@@ -171,4 +180,4 @@ def run_inference_server(
 
         pending.clear()
 
-    LOGGER.info("Inference server terminated") 
+    LOGGER.info("Inference server terminated")

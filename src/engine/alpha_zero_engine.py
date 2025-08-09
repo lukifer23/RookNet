@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Optional, Union
 
 import chess
-import torch
 import numpy as np
+import torch
 
 from engine.base_engine import BaseEngine
-from search.mcts import MCTS
 from models.base_model import BaseModel
-from utils.config_loader import load_config
-from utils.move_encoder import get_policy_vector_size, encode_move
+from search.mcts import MCTS
 
 
 class AlphaZeroEngine(BaseEngine):
@@ -40,11 +37,11 @@ class AlphaZeroEngine(BaseEngine):
     async def select_move(self, board: chess.Board) -> chess.Move:
         """Off-loads the expensive MCTS search to a worker thread."""
         best_move = await asyncio.to_thread(self.mcts.search, board)
-        
+
         # The new MCTS search directly returns the best move based on visit counts.
         # If temperature is > 0, we could sample from the visit counts distribution.
         # For now, we will use the most visited move as determined by MCTS.
-        
+
         if self.temperature > 0 and self.mcts.root and self.mcts.root.children:
             return self._select_move_with_temp(board)
 
@@ -57,12 +54,14 @@ class AlphaZeroEngine(BaseEngine):
             return next(iter(board.legal_moves))
 
         moves = list(root.children.keys())
-        visit_counts = np.array([child.visit_count for child in root.children.values()], dtype=np.float32)
-        
+        visit_counts = np.array(
+            [child.visit_count for child in root.children.values()], dtype=np.float32
+        )
+
         # Apply temperature to visit counts
         powered_visits = np.power(visit_counts, 1.0 / self.temperature)
         probs = powered_visits / np.sum(powered_visits)
-        
+
         # Sample a move based on the new probabilities
         selected_move_index = np.random.choice(len(moves), p=probs)
         return moves[selected_move_index]
@@ -76,10 +75,11 @@ class AlphaZeroEngine(BaseEngine):
 # Convenience synchronous wrapper
 # ---------------------------------------------------------------------------
 
+
 async def _async_select(engine: "AlphaZeroEngine", board: chess.Board):
     return await engine.select_move(board)
 
 
 def select_move_sync(engine: "AlphaZeroEngine", board: chess.Board) -> chess.Move:
     """Convenience synchronous wrapper."""
-    return asyncio.run(engine.select_move(board)) 
+    return asyncio.run(engine.select_move(board))

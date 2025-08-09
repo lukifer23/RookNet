@@ -15,39 +15,38 @@ Features:
 Expected Result: FINALLY BEAT STOCKFISH!
 """
 
+import math
 import os
+from dataclasses import dataclass
+from typing import Dict, Optional
 
 import chess
 import chess.engine
 import numpy as np
 import torch
-import torch.nn.functional as F
-import math
-import time
-from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass
-from collections import defaultdict
-import random
 
 # Our modules
 from models.base_model import BaseModel
-from utils.move_encoder import move_to_index, index_to_move, get_policy_vector_size
+from utils.move_encoder import get_policy_vector_size, move_to_index
+
 
 @dataclass
 class MCTSStats:
     """Statistics for MCTS node"""
+
     visits: int = 0
     value_sum: float = 0.0
     prior: float = 0.0
-    
+
     @property
     def mean_value(self) -> float:
         return self.value_sum / max(1, self.visits)
 
+
 class MCTSNode:
     """A node in the Monte Carlo Tree Search tree."""
 
-    def __init__(self, parent: Optional['MCTSNode'], prior: float):
+    def __init__(self, parent: Optional["MCTSNode"], prior: float):
         self.parent = parent
         self.children: Dict[chess.Move, MCTSNode] = {}
         self.visit_count = 0
@@ -63,17 +62,18 @@ class MCTSNode:
 
     def select_child(self, c_puct: float) -> chess.Move:
         """Selects the best child node to explore using the PUCT formula."""
-        best_score = -float('inf')
+        best_score = -float("inf")
         best_move = None
-        
+
         for move, child in self.children.items():
-            puct_score = child.mean_action_value + c_puct * child.prior * \
-                         math.sqrt(self.visit_count) / (1 + child.visit_count)
-            
+            puct_score = child.mean_action_value + c_puct * child.prior * math.sqrt(
+                self.visit_count
+            ) / (1 + child.visit_count)
+
             if puct_score > best_score:
                 best_score = puct_score
                 best_move = move
-                
+
         return best_move
 
     def expand(self, policy: Dict[chess.Move, float]):
@@ -90,6 +90,7 @@ class MCTSNode:
             value = -value
             node = node.parent
 
+
 class MCTS:
     """
     A reusable MCTS implementation for chess, guided by a neural network.
@@ -98,31 +99,37 @@ class MCTS:
 
     def __init__(self, model: BaseModel, config: Dict, device: str):
         self.model = model
-        self.config = config['training']['mcts']
+        self.config = config["training"]["mcts"]
         self.device = device
         self.policy_size = get_policy_vector_size()
         self.root = None
 
     @torch.no_grad()
-    def search(self, board: chess.Board, simulations: Optional[int] = None) -> chess.Move:
+    def search(
+        self, board: chess.Board, simulations: Optional[int] = None
+    ) -> chess.Move:
         """
         Performs MCTS search for a given number of simulations to find the best move.
         """
-        sim_count = simulations or self.config['simulations']
+        sim_count = simulations or self.config["simulations"]
         self.root = MCTSNode(parent=None, prior=0.0)
 
         # Evaluate the root node
         value, policy_logits = self._evaluate(board)
-        
+
         legal_moves = list(board.legal_moves)
         policy = self._get_policy_dict(policy_logits, legal_moves)
 
         # Add Dirichlet noise for exploration at the root
-        if self.config.get('dirichlet_alpha'):
-            dirichlet_noise = np.random.dirichlet([self.config['dirichlet_alpha']] * len(legal_moves))
-            eps = self.config['dirichlet_epsilon']
+        if self.config.get("dirichlet_alpha"):
+            dirichlet_noise = np.random.dirichlet(
+                [self.config["dirichlet_alpha"]] * len(legal_moves)
+            )
+            eps = self.config["dirichlet_epsilon"]
             for i, move in enumerate(legal_moves):
-                policy[move] = (1 - eps) * policy.get(move, 0.0) + eps * dirichlet_noise[i]
+                policy[move] = (1 - eps) * policy.get(
+                    move, 0.0
+                ) + eps * dirichlet_noise[i]
 
         self.root.expand(policy)
         self.root.backup(value)
@@ -135,7 +142,7 @@ class MCTS:
 
             # 1. Selection: Traverse the tree
             while node.children:
-                move = node.select_child(self.config['c_puct'])
+                move = node.select_child(self.config["c_puct"])
                 node = node.children[move]
                 current_board.push(move)
                 search_path.append(node)
@@ -143,7 +150,9 @@ class MCTS:
             # 2. Expansion & Evaluation
             if not current_board.is_game_over():
                 value, policy_logits = self._evaluate(current_board)
-                policy = self._get_policy_dict(policy_logits, list(current_board.legal_moves))
+                policy = self._get_policy_dict(
+                    policy_logits, list(current_board.legal_moves)
+                )
                 node.expand(policy)
             else:
                 # Terminal node: get game result
@@ -154,7 +163,7 @@ class MCTS:
                     value = -1.0 if current_board.turn == chess.BLACK else 1.0
                 else:
                     value = 0.0
-            
+
             # 3. Backup
             node.backup(value)
 
@@ -167,12 +176,14 @@ class MCTS:
         Returns the value and policy logits.
         """
         from utils.board_utils import board_to_tensor
-        
+
         board_tensor = board_to_tensor(board).unsqueeze(0).to(self.device)
         value_tensor, policy_logits = self.model(board_tensor)
         return value_tensor.item(), policy_logits.squeeze(0)
 
-    def _get_policy_dict(self, policy_logits: torch.Tensor, legal_moves: list) -> Dict[chess.Move, float]:
+    def _get_policy_dict(
+        self, policy_logits: torch.Tensor, legal_moves: list
+    ) -> Dict[chess.Move, float]:
         """
         Creates a dictionary mapping legal moves to their policy probabilities.
         """
@@ -192,20 +203,21 @@ class MCTS:
         if total_prob > 0:
             for move in policy_dict:
                 policy_dict[move] /= total_prob
-        else: # If all legal moves have 0 prob, use uniform
-             for move in legal_moves:
+        else:  # If all legal moves have 0 prob, use uniform
+            for move in legal_moves:
                 policy_dict[move] = 1.0 / len(legal_moves)
-        
+
         return policy_dict
+
 
 def create_mcts_player(model_path: str, simulations: int = 800) -> MCTS:
     """
     Factory function to create MCTS player with specified parameters.
-    
+
     Args:
         model_path: Path to trained neural network model
         simulations: Number of MCTS simulations per move
-        
+
     Returns:
         Configured MCTS player
     """
@@ -213,27 +225,30 @@ def create_mcts_player(model_path: str, simulations: int = 800) -> MCTS:
     player.num_simulations = simulations
     return player
 
+
 if __name__ == "__main__":
     # Test the MCTS player
     model_path = "models/master_game_checkpoints/master_games_best.pt"
-    
+
     if os.path.exists(model_path):
         print("🧪 TESTING MCTS PLAYER")
         print("=" * 40)
-        
+
         player = MCTS(model_path)
         board = chess.Board()
-        
+
         print(f"Starting position: {board.fen()}")
         move = player.search(board)
         print(f"MCTS selected move: {move}")
-        
+
         # Get detailed analysis
         info = player.get_search_info(board)
-        print(f"\nDetailed analysis:")
-        for move_uci, data in info['move_analysis'].items():
-            print(f"  {move_uci}: {data['visits']} visits ({data['visits_pct']:.1f}%), "
-                  f"value={data['value']:.3f}, prior={data['prior']:.3f}")
+        print("\nDetailed analysis:")
+        for move_uci, data in info["move_analysis"].items():
+            print(
+                f"  {move_uci}: {data['visits']} visits ({data['visits_pct']:.1f}%), "
+                f"value={data['value']:.3f}, prior={data['prior']:.3f}"
+            )
     else:
         print(f"❌ Model not found: {model_path}")
-        print("🎯 Please run master games training first!") 
+        print("🎯 Please run master games training first!")

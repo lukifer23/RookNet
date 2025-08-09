@@ -1,40 +1,37 @@
-import torch
-import torch.optim as optim
-import torch.nn.functional as F
-import chess
-import numpy as np
-import random
-import os
-import time
-import math
-import logging
-import copy
-import sys
-from collections import deque
-from dataclasses import dataclass
-from typing import List, Tuple, Dict
 import json
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+import logging
 import multiprocessing as mp
-from tqdm import tqdm
-from torch.utils.data import DataLoader, TensorDataset
-import webdataset as wds
+import os
+import random
+import sys
+import time
 import warnings
+from dataclasses import dataclass
 
 # GPU inference server
-from multiprocessing import Process, Manager
+from multiprocessing import Process
+from typing import Dict, List
+
+import chess
+import numpy as np
+import torch
+import torch.nn.functional as F
+import torch.optim as optim
+import webdataset as wds
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from torch.utils.data import DataLoader, TensorDataset
+from tqdm import tqdm
+
 from engine.gpu_inference_server import run_inference_server
+from models.chess_transformer import ChessTransformer
+from search.mcts import MCTS
+from utils.board_utils import board_to_tensor
+from utils.config_loader import load_config
+from utils.move_encoder import encode_move, get_policy_vector_size
 
 # Ensure the 'src' directory is in the Python path
 # (Removed obsolete sys.path manipulation after package installation)
-
 from utils.replay_buffer import StreamingReplayBuffer
-from models.chess_transformer import ChessTransformer
-from utils.chess_env import ChessEnvironment
-from utils.config_loader import load_config
-from utils.move_encoder import encode_move, decode_move, get_policy_vector_size
-from search.mcts import MCTS
-from utils.board_utils import board_to_tensor
 
 # --- Game Outcome Constants ---
 WIN = 1.0
@@ -43,7 +40,7 @@ DRAW = 0.0
 
 # --- Early Termination Parameters ---
 RESIGN_THRESHOLD = 0.95  # Value head confidence to trigger early resign
-RESIGN_STREAK = 20       # Consecutive plies above threshold before resign
+RESIGN_STREAK = 20  # Consecutive plies above threshold before resign
 # Hard limit on the number of plies in a single game
 MAX_PLIES = 400
 
@@ -108,7 +105,6 @@ def play_eval_game_worker(
     try:
         # --- Config and Environment ---
         config = load_config(config_path)
-        env = ChessEnvironment(config)
 
         # --- Model Loading ---
         class RemoteModel:
@@ -201,12 +197,6 @@ def play_game_worker(
     try:
         # --- Config and Environment ---
         config = load_config(config_path)
-        env = ChessEnvironment(config)
-        desired_device = config["system"]["device"]
-        if desired_device == "cuda" and torch.cuda.is_available():
-            device = torch.device("cuda")
-        else:
-            device = torch.device("cpu")
 
         # RemoteModel wraps queue-based inference so MCTS API stays unchanged
         class RemoteModel:
@@ -757,7 +747,7 @@ class AlphaZeroTrainer:
             win_rate
             > self.config["training"]["alpha_zero"]["opponent_update_threshold"]
         ):
-            self.logger.info(f"New model is superior. Updating best opponent model.")
+            self.logger.info("New model is superior. Updating best opponent model.")
             self.best_opponent_model.load_state_dict(self.model.state_dict())
             self._save_checkpoint(is_best=True)
         else:
@@ -973,13 +963,18 @@ class AlphaZeroTrainer:
 
 # ------------------------------- Move Selection -------------------------------
 
-def select_move(policy: np.ndarray, temperature: float, board: chess.Board) -> chess.Move:
+
+def select_move(
+    policy: np.ndarray, temperature: float, board: chess.Board
+) -> chess.Move:
     """Selects a legal move using the given policy and temperature."""
     legal_moves_map = {
         encode_move(mv): mv for mv in board.legal_moves if encode_move(mv) is not None
     }
     if not legal_moves_map:
-        return random.choice(list(board.legal_moves)) if list(board.legal_moves) else None
+        return (
+            random.choice(list(board.legal_moves)) if list(board.legal_moves) else None
+        )
 
     legal_indices = list(legal_moves_map.keys())
     legal_policy = policy[legal_indices]
@@ -1002,7 +997,10 @@ def select_move(policy: np.ndarray, temperature: float, board: chess.Board) -> c
 
 def create_remote_evaluator(req_q, res_q, device="cpu"):
     """Factory that returns an evaluator(board_tensor) callable using queues."""
-    import os, torch, numpy as np
+    import os
+
+    import numpy as np
+    import torch
 
     def _eval(board_tensor: torch.Tensor):
         uid = os.urandom(16)

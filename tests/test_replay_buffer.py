@@ -1,18 +1,18 @@
 import sys
 from pathlib import Path
 
+import numpy as np
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT / "src"))
 
-import numpy as np
-import pytest
+from utils.move_encoder import get_policy_vector_size  # noqa: E402
+from utils.replay_buffer import StreamingReplayBuffer  # noqa: E402
 
 # Skip if torch or webdataset not installed
 torch = pytest.importorskip("torch")
 pytest.importorskip("webdataset")
-
-from utils.replay_buffer import StreamingReplayBuffer
-from utils.move_encoder import get_policy_vector_size
 
 
 def test_replay_buffer_add_sample(tmp_path):

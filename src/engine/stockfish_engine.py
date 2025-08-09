@@ -61,10 +61,11 @@ class StockfishEngine(BaseEngine):
 # Convenience synchronous wrapper – mirrors :pyfunc:`gemini_engine.select_move_sync`.
 # ---------------------------------------------------------------------------
 
+
 async def _async_select(engine: "StockfishEngine", board: chess.Board):
     return await engine.select_move(board)
 
 
 def select_move_sync(engine: "StockfishEngine", board: chess.Board) -> chess.Move:
     """Blocking helper for legacy sync call-sites."""
-    return asyncio.run(_async_select(engine, board)) 
+    return asyncio.run(_async_select(engine, board))

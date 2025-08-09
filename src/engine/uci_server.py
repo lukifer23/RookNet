@@ -14,45 +14,52 @@ No multithreading or pondering implemented (kept minimal for stability).
 from __future__ import annotations
 
 import sys
-import sys
-import chess
-import json
 import time
 from pathlib import Path
 from typing import List
 
-# (Removed obsolete sys.path manipulation after package installation)
+import chess
 
+# (Removed obsolete sys.path manipulation after package installation)
 import torch
+
 from models.chess_transformer import ChessTransformer
-from utils.config_loader import load_config
-from utils.move_encoder import get_policy_vector_size
 from search.mcts import MCTS
 from src.training.alphazero_trainer import select_move
+from utils.config_loader import load_config
+from utils.move_encoder import get_policy_vector_size
 
 CONFIG = load_config("configs/config.v2.yaml")
 POLICY_SIZE = get_policy_vector_size()
 
-DEVICE = torch.device(CONFIG['system']['device'] if CONFIG['system']['device'] != 'auto' else ('cuda' if torch.cuda.is_available() else 'cpu'))
+DEVICE = torch.device(
+    CONFIG["system"]["device"]
+    if CONFIG["system"]["device"] != "auto"
+    else ("cuda" if torch.cuda.is_available() else "cpu")
+)
 
 # Load model checkpoint (best opponent) -------------------------------------------------
-ckpt_path = Path(CONFIG['training']['checkpoints']['dir']) / CONFIG['training']['checkpoints']['best_opponent_model']
+ckpt_path = (
+    Path(CONFIG["training"]["checkpoints"]["dir"])
+    / CONFIG["training"]["checkpoints"]["best_opponent_model"]
+)
 if not ckpt_path.exists():
     print(f"info string No model checkpoint found at {ckpt_path}")
     sys.exit(1)
 
-model_config = CONFIG['model']['chess_transformer']
-model_config['policy_head_output_size'] = POLICY_SIZE
+model_config = CONFIG["model"]["chess_transformer"]
+model_config["policy_head_output_size"] = POLICY_SIZE
 
 model = ChessTransformer(**model_config).to(DEVICE)
 state = torch.load(ckpt_path, map_location=DEVICE)
-model.load_state_dict(state.get('model_state_dict', state))
+model.load_state_dict(state.get("model_state_dict", state))
 model.eval()
 
 mcts = MCTS(model, DEVICE)
 
 # ----------------------------------------------------------------------------
 current_board = chess.Board()
+
 
 def send(line: str):
     sys.stdout.write(line + "\n")
@@ -62,13 +69,13 @@ def send(line: str):
 def parse_position(tokens: List[str]):
     """Handle 'position' command."""
     global current_board
-    if tokens[0] == 'startpos':
+    if tokens[0] == "startpos":
         current_board = chess.Board()
-        moves = tokens[2:] if len(tokens) > 1 and tokens[1] == 'moves' else []
-    elif tokens[0] == 'fen':
-        fen = ' '.join(tokens[1:7])
+        moves = tokens[2:] if len(tokens) > 1 and tokens[1] == "moves" else []
+    elif tokens[0] == "fen":
+        fen = " ".join(tokens[1:7])
         current_board = chess.Board(fen)
-        moves = tokens[8:] if len(tokens) > 7 and tokens[7] == 'moves' else []
+        moves = tokens[8:] if len(tokens) > 7 and tokens[7] == "moves" else []
     else:
         return
     for mv in moves:
@@ -82,7 +89,7 @@ def best_move():
     policy, _ = mcts.search(current_board, add_noise=False)
     move = select_move(policy, temperature=0, board=current_board)
     if move is None:
-        return '0000'
+        return "0000"
     return move.uci()
 
 
@@ -93,30 +100,30 @@ while True:
         if not line:
             break
         line = line.strip()
-        if line == '':
+        if line == "":
             continue
 
         tokens = line.split()
         cmd = tokens[0]
 
-        if cmd == 'uci':
-            send('id name NativeChessTransformer')
-            send('id author OpenAI')
-            send('uciok')
-        elif cmd == 'isready':
-            send('readyok')
-        elif cmd == 'ucinewgame':
+        if cmd == "uci":
+            send("id name NativeChessTransformer")
+            send("id author OpenAI")
+            send("uciok")
+        elif cmd == "isready":
+            send("readyok")
+        elif cmd == "ucinewgame":
             current_board = chess.Board()
-        elif cmd == 'position':
+        elif cmd == "position":
             parse_position(tokens[1:])
-        elif cmd == 'go':
+        elif cmd == "go":
             # Simple handling: respect movetime X or depth Y
             movetime_ms = None
             depth = None
-            if 'movetime' in tokens:
-                movetime_ms = int(tokens[tokens.index('movetime') + 1])
-            if 'depth' in tokens:
-                depth = int(tokens[tokens.index('depth') + 1])
+            if "movetime" in tokens:
+                movetime_ms = int(tokens[tokens.index("movetime") + 1])
+            if "depth" in tokens:
+                depth = int(tokens[tokens.index("depth") + 1])
 
             start = time.time()
             best = best_move()
@@ -125,9 +132,9 @@ while True:
                 elapsed = (time.time() - start) * 1000
                 if elapsed < movetime_ms:
                     time.sleep(max(0, (movetime_ms - elapsed) / 1000))
-            send(f'bestmove {best}')
-        elif cmd == 'quit':
+            send(f"bestmove {best}")
+        elif cmd == "quit":
             break
     except Exception as e:
-        send(f'info string error {e}')
-        break 
+        send(f"info string error {e}")
+        break

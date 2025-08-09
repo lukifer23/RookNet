@@ -51,6 +51,7 @@ def encode_move(move: chess.Move) -> int:  # alias for compatibility
 def decode_move(index: int) -> chess.Move:  # alias for compatibility
     return index_to_move(index, chess.Board())
 
+
 def get_legal_move_mask(board: chess.Board) -> list[int]:
     """
     Returns a list of indices corresponding to the legal moves in the current position.
@@ -60,4 +61,4 @@ def get_legal_move_mask(board: chess.Board) -> list[int]:
         idx = encode_move(move)
         if idx is not None:
             legal_move_indices.append(idx)
-    return legal_move_indices 
+    return legal_move_indices

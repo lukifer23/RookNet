@@ -1,13 +1,17 @@
-import os
 import asyncio
+import os
 from typing import Optional
+
 import chess
 import httpx
+
 from .base_engine import BaseEngine
+
 
 # Endpoint template – v1beta matches current public API (June-2025)
 def _build_endpoint(model: str, api_version: str) -> str:
     return f"https://generativelanguage.googleapis.com/{api_version}/models/{model}:generateContent"
+
 
 # Prefer GA v1 for 2.x and later; keep v1beta for preview/experimental models.
 def _preferred_api_version(model: str) -> str:
@@ -17,6 +21,7 @@ def _preferred_api_version(model: str) -> str:
     if model.startswith("gemini-2"):
         return "v1"
     return "v1beta"
+
 
 _SYSTEM_PROMPT = (
     "You are a chess grandmaster. Respond with the single best move for the side to move "
@@ -40,7 +45,9 @@ class GeminiEngine(BaseEngine):
         self.model = model
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
-            raise RuntimeError("GeminiEngine requires an API key. Provide api_key arg or set GEMINI_API_KEY env var.")
+            raise RuntimeError(
+                "GeminiEngine requires an API key. Provide api_key arg or set GEMINI_API_KEY env var."
+            )
         self.temperature = temperature
         self.timeout = timeout
 
@@ -68,7 +75,7 @@ class GeminiEngine(BaseEngine):
 
         # Open a fresh HTTPX client tied to *this* event loop.
         async with httpx.AsyncClient(http2=True, timeout=self.timeout) as client:
-            
+
             async def _post(u):
                 r = await client.post(u, headers=headers, json=payload)
                 r.raise_for_status()
@@ -85,7 +92,9 @@ class GeminiEngine(BaseEngine):
                     r = await _post(alt_url)
                 except Exception:
                     # Log detailed error once and re-raise to outer handler.
-                    print(f"[GeminiEngine] Request failed. Status {e.response.status_code}. Body: {e.response.text[:500]}")
+                    print(
+                        f"[GeminiEngine] Request failed. Status {e.response.status_code}. Body: {e.response.text[:500]}"
+                    )
                     raise
 
             # At this point request succeeded
@@ -100,7 +109,9 @@ class GeminiEngine(BaseEngine):
                     if "parts" in content and content["parts"]:
                         txt = content["parts"][0].get("text", "")
                     else:
-                        txt = content.get("text", "")  # Shape B: {'content': {'text': 'e2e4'}}
+                        txt = content.get(
+                            "text", ""
+                        )  # Shape B: {'content': {'text': 'e2e4'}}
                 else:
                     # Shape C: 'content' itself is the string
                     txt = str(content)
@@ -129,7 +140,9 @@ class GeminiEngine(BaseEngine):
 
                 move = random.choice(list(board.legal_moves))
                 # Log the error but do not raise
-                print(f"[GeminiEngine] Invalid LLM move '{text}'. Using random legal move instead. Error: {fallback_error}")
+                print(
+                    f"[GeminiEngine] Invalid LLM move '{text}'. Using random legal move instead. Error: {fallback_error}"
+                )
 
             return move
 
@@ -142,5 +155,6 @@ class GeminiEngine(BaseEngine):
 async def _async_select(engine: GeminiEngine, board: chess.Board):
     return await engine.select_move(board)
 
+
 def select_move_sync(engine: GeminiEngine, board: chess.Board) -> chess.Move:
-    return asyncio.run(_async_select(engine, board)) 
+    return asyncio.run(_async_select(engine, board))

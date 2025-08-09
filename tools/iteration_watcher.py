@@ -18,19 +18,20 @@ runtime (PyTorch, multiprocessing, etc.).
 from __future__ import annotations
 
 import json
-import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROGRESS_PATH = PROJECT_ROOT / "logs" / "alpha_zero_training" / "training_progress.json"
 COUNTER_PATH = PROJECT_ROOT / "logs" / "alpha_zero_training" / "iteration_counter.txt"
-FREEZE_TAG_PATH = PROJECT_ROOT / "models" / "alpha_zero_checkpoints" / "iteration_freeze_start.tag"
+FREEZE_TAG_PATH = (
+    PROJECT_ROOT / "models" / "alpha_zero_checkpoints" / "iteration_freeze_start.tag"
+)
 
 POLL_INTERVAL_SECONDS = 15.0  # Adjust if you need finer granularity
+
 
 def _safe_read_progress() -> Optional[int]:
     """Read the current iteration from the progress file.
@@ -76,7 +77,9 @@ def main() -> None:
             # Emit freeze tag once
             if not FREEZE_TAG_PATH.exists():
                 _write_freeze_tag(iteration)
-                print(f"[iteration_watcher] Freeze tag created at iteration {iteration}.")
+                print(
+                    f"[iteration_watcher] Freeze tag created at iteration {iteration}."
+                )
 
             # Log to stdout on change
             if last_iteration != iteration:
@@ -89,4 +92,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n[iteration_watcher] Stopped by user.") 
+        print("\n[iteration_watcher] Stopped by user.")
