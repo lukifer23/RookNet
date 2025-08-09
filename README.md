@@ -21,14 +21,18 @@ Superhuman Chess AI using a hybrid CNN+Transformer AlphaZero-style architecture.
    source chess_ai_env/bin/activate
    pip install -e .[dev]
    ```
-3. **Resume or start training:**
+3. **Start or resume training:**
    ```sh
-   python src/training/alphazero_trainer.py
+   python run.py train --config configs/config.v2.yaml
    ```
-4. **Launch the web GUI:**
+4. **Evaluate a model:**
    ```sh
-  python chess_web_gui.py
-  ```
+   python run.py eval models/alpha_zero_checkpoints/latest_player.pt --games 5
+   ```
+5. **Launch the web GUI:**
+   ```sh
+   python run.py web
+   ```
 
 ## Recommended Settings
 - The default configuration trains a ~64M parameter model with 384 CNN channels and 20 residual blocks.
