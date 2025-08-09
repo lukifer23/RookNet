@@ -28,7 +28,7 @@ from models.chess_transformer import ChessTransformer
 from utils.config_loader import load_config
 from utils.move_encoder import get_policy_vector_size
 from search.mcts import MCTS
-from src.training.alphazero_trainer import select_move
+from engine.inference_helpers import select_move
 
 CONFIG = load_config("configs/config.v2.yaml")
 POLICY_SIZE = get_policy_vector_size()
