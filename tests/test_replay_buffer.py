@@ -1,9 +1,3 @@
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(ROOT / "src"))
-
 import numpy as np
 import pytest
 
@@ -27,3 +21,17 @@ def test_replay_buffer_add_sample(tmp_path):
     assert policies.shape == (2, policy.size)
     assert values.shape[0] == 2
     buf.close()
+
+
+def test_webdataset_iteration(tmp_path):
+    buf = StreamingReplayBuffer(tmp_path)
+    state = np.zeros((12, 8, 8), dtype=np.float32)
+    policy = np.zeros(get_policy_vector_size(), dtype=np.float32)
+    buf.add(state, policy, 0.5)
+    buf.close()
+    ds = buf.webdataset(shuffle=0)
+    sample = next(iter(ds))
+    board, pol, value = sample
+    assert board.shape == state.shape
+    assert pol.shape == policy.shape
+    assert float(value) == 0.5

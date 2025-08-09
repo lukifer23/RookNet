@@ -1,9 +1,3 @@
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(ROOT / "src"))
-
 import chess
 import pytest
 
@@ -12,7 +6,6 @@ torch = pytest.importorskip("torch")
 
 from search.mcts import MCTS
 from utils.move_encoder import get_policy_vector_size
-from utils.board_utils import board_to_tensor
 from models.base_model import BaseModel
 
 
@@ -39,3 +32,40 @@ def test_mcts_root_visit_count():
     board = chess.Board()
     mcts.search(board, simulations=5)
     assert mcts.root.visit_count == 6
+
+
+def _mcts(config_overrides=None):
+    base_config = {
+        "training": {
+            "mcts": {
+                "simulations": 1,
+                "c_puct": 1.0,
+                "dirichlet_alpha": 0.0,
+                "dirichlet_epsilon": 0.0,
+            }
+        }
+    }
+    if config_overrides:
+        base_config["training"]["mcts"].update(config_overrides)
+    return MCTS(DummyModel(), base_config, device="cpu")
+
+
+@pytest.mark.parametrize(
+    "fen",
+    [
+        "r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4",  # checkmate
+        "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1",  # stalemate
+    ],
+)
+def test_mcts_search_game_over_positions(fen):
+    mcts = _mcts()
+    board = chess.Board(fen)
+    with pytest.raises(ValueError):
+        mcts.search(board, simulations=1)
+
+
+def test_mcts_zero_simulations_returns_move():
+    mcts = _mcts()
+    board = chess.Board()
+    move = mcts.search(board, simulations=0)
+    assert isinstance(move, chess.Move)

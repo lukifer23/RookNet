@@ -7,6 +7,7 @@ into sharded .tar files and exposes an iterable WebDataset pipeline for training
 """
 
 import os
+import glob
 from pathlib import Path
 from typing import Iterable, Tuple, Any
 
@@ -87,7 +88,13 @@ class StreamingReplayBuffer:
     def webdataset(self, *, shuffle: int = 10_000, repeat: bool = True, shardshuffle: bool = False):
         """Return a WebDataset pipeline for PyTorch DataLoader."""
         pattern = str(self.root / "shard-*.tar*")  # glob both .tar and .tar.gz
-        ds = wds.WebDataset(pattern, resampled=repeat, shardshuffle=shardshuffle).shuffle(shuffle)
+        urls = sorted(glob.glob(pattern))
+        if not urls:
+            raise FileNotFoundError(f"No shards found matching {pattern}")
+        ds = wds.WebDataset(urls, shardshuffle=shardshuffle)
+        if repeat:
+            ds = ds.repeat()
+        ds = ds.shuffle(shuffle)
         ds = ds.decode().to_tuple("board.npy", "policy.npy", "value.txt")
 
         # value.txt -> float tensor later; keep raw for now
