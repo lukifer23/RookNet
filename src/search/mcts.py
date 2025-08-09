@@ -96,30 +96,63 @@ class MCTS:
     This class is model-agnostic and configured via the project's config file.
     """
 
-    def __init__(self, model: BaseModel, config: Dict, device: str):
+    def __init__(
+        self,
+        model: BaseModel,
+        config: Dict,
+        device: str,
+        random_seed: Optional[int] = None,
+    ):
+        """Create a new MCTS instance.
+
+        Args:
+            model: Neural network used for policy and value evaluation.
+            config: Project configuration dictionary.
+            device: Torch device string.
+            random_seed: Optional seed for ``numpy`` and Python ``random``.
+                When provided, MCTS will behave deterministically which is
+                useful for testing.
+        """
         self.model = model
         self.config = config['training']['mcts']
         self.device = device
         self.policy_size = get_policy_vector_size()
         self.root = None
 
+        if random_seed is not None:
+            np.random.seed(random_seed)
+            random.seed(random_seed)
+
     @torch.no_grad()
-    def search(self, board: chess.Board, simulations: Optional[int] = None) -> chess.Move:
-        """
-        Performs MCTS search for a given number of simulations to find the best move.
+    def search(
+        self,
+        board: chess.Board,
+        simulations: Optional[int] = None,
+        verbose: bool = False,
+    ) -> chess.Move:
+        """Run MCTS to find the best move.
+
+        Args:
+            board: The current chess board state.
+            simulations: Number of simulations to run. Defaults to the value
+                in the configuration.
+            verbose: If ``True`` print debugging information including selected
+                moves, visit counts and evaluation scores.
         """
         sim_count = simulations or self.config['simulations']
         self.root = MCTSNode(parent=None, prior=0.0)
 
         # Evaluate the root node
         value, policy_logits = self._evaluate(board)
-        
+
         legal_moves = list(board.legal_moves)
         policy = self._get_policy_dict(policy_logits, legal_moves)
 
         # Add Dirichlet noise for exploration at the root
         if self.config.get('dirichlet_alpha'):
-            dirichlet_noise = np.random.dirichlet([self.config['dirichlet_alpha']] * len(legal_moves))
+            dirichlet_noise = np.random.dirichlet(
+                [self.config['dirichlet_alpha']] * len(legal_moves)
+            )
             eps = self.config['dirichlet_epsilon']
             for i, move in enumerate(legal_moves):
                 policy[move] = (1 - eps) * policy.get(move, 0.0) + eps * dirichlet_noise[i]
@@ -127,15 +160,21 @@ class MCTS:
         self.root.expand(policy)
         self.root.backup(value)
 
+        if verbose:
+            print(f"Root evaluation value: {value:.3f}")
+
         # Run simulations
-        for _ in range(sim_count):
+        for sim in range(sim_count):
             node = self.root
             search_path = [node]
             current_board = board.copy()
+            first_move = None
 
             # 1. Selection: Traverse the tree
             while node.children:
                 move = node.select_child(self.config['c_puct'])
+                if first_move is None:
+                    first_move = move
                 node = node.children[move]
                 current_board.push(move)
                 search_path.append(node)
@@ -143,7 +182,9 @@ class MCTS:
             # 2. Expansion & Evaluation
             if not current_board.is_game_over():
                 value, policy_logits = self._evaluate(current_board)
-                policy = self._get_policy_dict(policy_logits, list(current_board.legal_moves))
+                policy = self._get_policy_dict(
+                    policy_logits, list(current_board.legal_moves)
+                )
                 node.expand(policy)
             else:
                 # Terminal node: get game result
@@ -154,9 +195,27 @@ class MCTS:
                     value = -1.0 if current_board.turn == chess.BLACK else 1.0
                 else:
                     value = 0.0
-            
+
+            if verbose and first_move is not None:
+                print(
+                    f"Simulation {sim + 1}: move {first_move}, evaluation {value:.3f}"
+                )
+
             # 3. Backup
             node.backup(value)
+
+            if verbose and first_move is not None:
+                child = self.root.children[first_move]
+                print(
+                    f"\tVisits {child.visit_count}, mean value {child.mean_action_value:.3f}"
+                )
+
+        if verbose:
+            print("Final visit counts:")
+            for move, child in self.root.children.items():
+                print(
+                    f"\tMove {move}: Visits {child.visit_count}, Mean Value {child.mean_action_value:.3f}"
+                )
 
         # Choose the best move based on visit counts
         return max(self.root.children.items(), key=lambda item: item[1].visit_count)[0]
