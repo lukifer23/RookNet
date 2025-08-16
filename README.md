@@ -1,6 +1,6 @@
 # RookNet
 
-Superhuman Chess AI using a hybrid CNN+Transformer AlphaZero-style architecture. This project implements scalable self-play training, evaluation, and a live web GUI for interactive play and analysis.
+ Chess AI using a hybrid CNN+Transformer AlphaZero-style architecture. This project implements scalable self-play training, evaluation, and a live web GUI for interactive play and analysis.
 
 ## Features
 - 64M parameter CNN+Transformer model
